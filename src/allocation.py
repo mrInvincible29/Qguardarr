@@ -95,9 +95,7 @@ class TorrentCache:
         if index is not None:
             self.needs_update[index] = True
 
-    def get_torrents_by_tracker(
-        self, tracker_id: str
-    ) -> List[Tuple[str, float, int]]:
+    def get_torrents_by_tracker(self, tracker_id: str) -> List[Tuple[str, float, int]]:
         """Get all torrents for a tracker:
         (hash, upload_speed, current_limit)"""
         torrents = []
@@ -142,9 +140,7 @@ class TorrentCache:
             "used_count": self.used_count,
             "free_slots": len(self.free_slots),
             "capacity": self.capacity,
-            "utilization_percent": round(
-                self.used_count / self.capacity * 100, 1
-            ),
+            "utilization_percent": round(self.used_count / self.capacity * 100, 1),
         }
 
 
@@ -160,9 +156,7 @@ class GradualRollout:
             return True
 
         # Use hash for consistent selection
-        hash_value = int(
-            hashlib.md5(torrent_hash.encode()).hexdigest()[:8], 16
-        )
+        hash_value = int(hashlib.md5(torrent_hash.encode()).hexdigest()[:8], 16)
         return (hash_value % 100) < self.rollout_percentage
 
     def update_rollout_percentage(self, percentage: int):
@@ -186,9 +180,7 @@ class AllocationEngine:
         self.rollback_manager = rollback_manager
 
         self.cache = TorrentCache(capacity=5000)
-        self.gradual_rollout = GradualRollout(
-            config.global_settings.rollout_percentage
-        )
+        self.gradual_rollout = GradualRollout(config.global_settings.rollout_percentage)
 
         # Priority queues for processing
         self.pending_checks: Set[str] = set()  # Torrent hashes to check
@@ -221,9 +213,7 @@ class AllocationEngine:
             self.stats["active_torrents"] = len(active_torrents)
 
             # Step 2: Filter torrents for gradual rollout
-            managed_torrents = self._filter_torrents_for_rollout(
-                active_torrents
-            )
+            managed_torrents = self._filter_torrents_for_rollout(active_torrents)
             self.stats["managed_torrents"] = len(managed_torrents)
 
             # Step 3: Update cache with current torrent data
@@ -233,9 +223,7 @@ class AllocationEngine:
             new_limits = self._calculate_limits_phase1(managed_torrents)
 
             # Step 5: Apply only necessary changes (differential updates)
-            changes_applied = await self._apply_differential_updates(
-                new_limits
-            )
+            changes_applied = await self._apply_differential_updates(new_limits)
             self.stats["limits_applied"] += changes_applied
 
             # Step 6: Cleanup old cache entries
@@ -268,9 +256,7 @@ class AllocationEngine:
             # Also include recently active torrents from cache
             cached_hashes = set(self.cache.hash_to_index.keys())
             if cached_hashes:
-                all_torrents = await self.qbit_client.get_torrents(
-                    filter_active=False
-                )
+                all_torrents = await self.qbit_client.get_torrents(filter_active=False)
                 self.stats["api_calls_last_cycle"] += 1
 
                 # Add cached torrents that might not be actively uploading now
@@ -319,26 +305,20 @@ class AllocationEngine:
             # Get current limit from qBittorrent if not in cache
             current_limit = self.cache.get_current_limit(torrent.hash)
             if current_limit is None:
-                current_limit = (
-                    await self.qbit_client.get_torrent_upload_limit(
-                        torrent.hash
-                    )
+                current_limit = await self.qbit_client.get_torrent_upload_limit(
+                    torrent.hash
                 )
                 self.stats["api_calls_last_cycle"] += 1
 
             # Update or add to cache
             if torrent.hash in self.cache.hash_to_index:
-                self.cache.update_torrent(
-                    torrent.hash, torrent.upspeed, current_limit
-                )
+                self.cache.update_torrent(torrent.hash, torrent.upspeed, current_limit)
             else:
                 self.cache.add_torrent(
                     torrent.hash, tracker_id, torrent.upspeed, current_limit
                 )
 
-    def _calculate_limits_phase1(
-        self, torrents: List[TorrentInfo]
-    ) -> Dict[str, int]:
+    def _calculate_limits_phase1(self, torrents: List[TorrentInfo]) -> Dict[str, int]:
         """
         Calculate new limits using Phase 1 logic: hard limits with equal
         distribution
@@ -355,9 +335,7 @@ class AllocationEngine:
 
         # Calculate limits for each tracker
         for tracker_id, tracker_torrents in tracker_groups.items():
-            tracker_config = self.tracker_matcher.get_tracker_config(
-                tracker_id
-            )
+            tracker_config = self.tracker_matcher.get_tracker_config(tracker_id)
             if not tracker_config:
                 continue
 
@@ -380,9 +358,7 @@ class AllocationEngine:
 
         return new_limits
 
-    async def _apply_differential_updates(
-        self, new_limits: Dict[str, int]
-    ) -> int:
+    async def _apply_differential_updates(self, new_limits: Dict[str, int]) -> int:
         """Apply only limits that need updating"""
         updates_needed = {}
 

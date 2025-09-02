@@ -15,9 +15,7 @@ class TrackerConfig(BaseModel):
     id: str
     name: str
     pattern: str
-    max_upload_speed: int = Field(
-        gt=0, description="Max upload speed in bytes/sec"
-    )
+    max_upload_speed: int = Field(gt=0, description="Max upload speed in bytes/sec")
     priority: int = Field(ge=1, le=10, default=1, description="Priority 1-10")
 
     @field_validator("pattern")
@@ -109,9 +107,7 @@ class QguardarrConfig(BaseModel):
         for i, tracker in enumerate(v):
             if tracker.pattern == ".*":
                 if i != len(v) - 1:
-                    raise ValueError(
-                        "Catch-all pattern (.*) must be the last tracker"
-                    )
+                    raise ValueError("Catch-all pattern (.*) must be the last tracker")
                 catch_all_found = True
 
         if not catch_all_found:
@@ -134,8 +130,7 @@ class ConfigLoader:
         """Recursively substitute environment variables in config data"""
         if isinstance(data, dict):
             return {
-                key: self._substitute_env_vars(value)
-                for key, value in data.items()
+                key: self._substitute_env_vars(value) for key, value in data.items()
             }
         elif isinstance(data, list):
             return [self._substitute_env_vars(item) for item in data]
@@ -155,9 +150,7 @@ class ConfigLoader:
     def load_config(self) -> QguardarrConfig:
         """Load and validate configuration from YAML file"""
         if not self.config_path.exists():
-            raise FileNotFoundError(
-                f"Configuration file not found: {self.config_path}"
-            )
+            raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
 
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:

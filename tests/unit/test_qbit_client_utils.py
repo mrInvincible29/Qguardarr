@@ -5,12 +5,14 @@ from typing import Any, Dict, List
 
 import pytest
 
-from src.qbit_client import QBittorrentClient, APICircuitBreaker, TorrentInfo
 from src.config import QBittorrentSettings
+from src.qbit_client import APICircuitBreaker, QBittorrentClient, TorrentInfo
 
 
 def make_client() -> QBittorrentClient:
-    cfg = QBittorrentSettings(host="localhost", port=8080, username="u", password="p", timeout=10)
+    cfg = QBittorrentSettings(
+        host="localhost", port=8080, username="u", password="p", timeout=10
+    )
     return QBittorrentClient(cfg)
 
 
@@ -61,7 +63,7 @@ class TestNeedsUpdate:
 
         # Very small speeds: absolute threshold of 10KB/s
         assert client.needs_update(20000, 25000) is False  # 5KB diff
-        assert client.needs_update(20000, 35000) is True   # 15KB diff
+        assert client.needs_update(20000, 35000) is True  # 15KB diff
 
         # Medium speeds: abs > 50KB OR rel > 30%
         base = 800_000  # < 1MB/s
@@ -85,9 +87,11 @@ async def test_batch_grouping(monkeypatch):
 
     async def fake_request(method: str, endpoint: str, **kwargs):
         calls.append({"endpoint": endpoint, "data": kwargs.get("data")})
+
         class Dummy:
             def raise_for_status(self):
                 return None
+
         return Dummy()
 
     monkeypatch.setattr(client, "_make_request", fake_request)
@@ -107,4 +111,3 @@ async def test_batch_grouping(monkeypatch):
     # Validate payloads contain expected limits
     payload_limits = sorted(p["data"]["limit"] for p in posted)
     assert payload_limits == [1000, 2000]
-

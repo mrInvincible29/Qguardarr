@@ -6,14 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from src.rollback import RollbackManager, RollbackEntry
 from src.config import RollbackSettings
+from src.rollback import RollbackEntry, RollbackManager
 
 
 @pytest.fixture
 async def rollback_mgr(tmp_path):
     db_path = tmp_path / "rb.db"
-    mgr = RollbackManager(RollbackSettings(database_path=str(db_path), track_all_changes=True))
+    mgr = RollbackManager(
+        RollbackSettings(database_path=str(db_path), track_all_changes=True)
+    )
     await mgr.initialize()
     return mgr
 

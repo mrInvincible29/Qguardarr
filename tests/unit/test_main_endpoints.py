@@ -7,13 +7,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.config import (
-    QguardarrConfig,
-    GlobalSettings,
-    QBittorrentSettings,
-    TrackerConfig,
-    RollbackSettings,
     CrossSeedSettings,
+    GlobalSettings,
     LoggingSettings,
+    QBittorrentSettings,
+    QguardarrConfig,
+    RollbackSettings,
+    TrackerConfig,
 )
 
 
@@ -90,7 +90,9 @@ def app_client(monkeypatch, test_config):
 
     monkeypatch.setattr(main, "ConfigLoader", DummyConfigLoader)
     monkeypatch.setattr(main.QBittorrentClient, "connect", noop_connect, raising=True)
-    monkeypatch.setattr(main.RollbackManager, "initialize", noop_initialize, raising=True)
+    monkeypatch.setattr(
+        main.RollbackManager, "initialize", noop_initialize, raising=True
+    )
     monkeypatch.setattr(
         main.AllocationEngine, "run_allocation_cycle", noop_cycle, raising=True
     )
@@ -107,12 +109,17 @@ def app_client(monkeypatch, test_config):
             return {"default": {"active_torrents": 0}}
 
         def get_stats(self) -> Dict[str, Any]:
-            return {"active_torrents": 0, "managed_torrents": 0, "api_calls_last_cycle": 0}
+            return {
+                "active_torrents": 0,
+                "managed_torrents": 0,
+                "api_calls_last_cycle": 0,
+            }
 
     client = TestClient(main.app)
 
     # Ensure allocation engine initialized before returning client
     import time as _time
+
     for _ in range(20):  # up to ~1s
         if main.app_state.get("allocation_engine") is not None:
             break
@@ -168,6 +175,7 @@ def test_health_endpoint(app_client: TestClient):
 def test_stats_endpoints(app_client: TestClient):
     # Wait until stats endpoint is ready
     import time as _time
+
     for _ in range(20):
         r = app_client.get("/stats")
         if r.status_code == 200:
@@ -197,7 +205,7 @@ def test_force_cycle_endpoint(app_client: TestClient, monkeypatch):
     import src.main as main
 
     called = {"count": 0}
-    
+
     class CycleEngine:
         async def run_allocation_cycle(self):
             called["count"] += 1

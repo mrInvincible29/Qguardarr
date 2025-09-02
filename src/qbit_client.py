@@ -149,12 +149,12 @@ class QBittorrentClient:
 
         # List of passwords to try in order (optimized for pre-configured setup)
         passwords_to_try = [
-            "adminadmin",          # Pre-configured password for testing
+            "adminadmin",  # Pre-configured password for testing
             self.config.password,  # Configured password
-            "admin",               # Simple admin password
-            "",                    # Empty password
+            "admin",  # Simple admin password
+            "",  # Empty password
         ]
-        
+
         # For testing environments, add fewer fallback passwords to reduce attempts
         if self.config.host in ["qbittorrent-test", "localhost"]:
             # Only add essential fallbacks to avoid triggering IP ban
@@ -168,11 +168,15 @@ class QBittorrentClient:
                     passwords_to_try.append(pwd)
 
         last_error = None
-        logging.info(f"Trying {len(passwords_to_try)} passwords in order: {[p if p else '(empty)' for p in passwords_to_try]}")
-        
+        logging.info(
+            f"Trying {len(passwords_to_try)} passwords in order: {[p if p else '(empty)' for p in passwords_to_try]}"
+        )
+
         for attempt, password in enumerate(passwords_to_try, 1):
             try:
-                logging.info(f"Authentication attempt {attempt}/{len(passwords_to_try)}: trying username='{self.config.username}' password='{password if password else '(empty)'}'")
+                logging.info(
+                    f"Authentication attempt {attempt}/{len(passwords_to_try)}: trying username='{self.config.username}' password='{password if password else '(empty)'}'"
+                )
                 login_data = {
                     "username": self.config.username,
                     "password": password,
@@ -186,31 +190,41 @@ class QBittorrentClient:
                 if response.text.strip() == "Ok.":
                     self.authenticated = True
                     if password != self.config.password:
-                        logging.info(f"Authenticated with alternative password on attempt {attempt}")
+                        logging.info(
+                            f"Authenticated with alternative password on attempt {attempt}"
+                        )
                     else:
                         logging.debug("Authenticated with qBittorrent")
                     return
                 else:
                     last_error = response.text.strip()
-                    logging.debug(f"Authentication attempt {attempt} failed: {last_error}")
-                    
+                    logging.debug(
+                        f"Authentication attempt {attempt} failed: {last_error}"
+                    )
+
             except Exception as e:
                 last_error = str(e)
                 logging.debug(f"Authentication attempt {attempt} error: {e}")
-                
+
                 # If we get 403, it might be IP ban - wait longer
                 if "403" in str(e) or "Forbidden" in str(e):
-                    logging.warning(f"Possible IP ban detected on attempt {attempt}, waiting longer...")
+                    logging.warning(
+                        f"Possible IP ban detected on attempt {attempt}, waiting longer..."
+                    )
                     if attempt < len(passwords_to_try):
-                        await asyncio.sleep(min(10.0, attempt * 2.0))  # Exponential backoff up to 10s
+                        await asyncio.sleep(
+                            min(10.0, attempt * 2.0)
+                        )  # Exponential backoff up to 10s
                     continue
-                
+
             # Progressive delay between attempts to avoid triggering IP ban
             if attempt < len(passwords_to_try):
                 delay = min(3.0, 1.0 + attempt * 0.5)  # 1.5s, 2s, 2.5s, 3s max
                 await asyncio.sleep(delay)
 
-        raise RuntimeError(f"Authentication failed after {len(passwords_to_try)} attempts. Last error: {last_error}")
+        raise RuntimeError(
+            f"Authentication failed after {len(passwords_to_try)} attempts. Last error: {last_error}"
+        )
 
     async def _make_request(
         self, method: str, endpoint: str, **kwargs
@@ -323,7 +337,7 @@ class QBittorrentClient:
         for limit, torrent_hashes in limits_groups.items():
             # Process in batches
             for i in range(0, len(torrent_hashes), batch_size):
-                batch = torrent_hashes[i:i + batch_size]
+                batch = torrent_hashes[i : i + batch_size]
                 hashes_str = "|".join(batch)
 
                 data = {"hashes": hashes_str, "limit": limit}
@@ -407,12 +421,12 @@ class QBittorrentClient:
     ) -> bool:
         """Add torrent from magnet link"""
         data = {"urls": magnet_url}
-        
+
         if category:
             data["category"] = category
         if paused:
             data["paused"] = "true"
-            
+
         try:
             await self._make_request("POST", "/api/v2/torrents/add", data=data)
             return True
@@ -424,24 +438,21 @@ class QBittorrentClient:
         """Delete torrent"""
         data = {
             "hashes": torrent_hash,
-            "deleteFiles": "true" if delete_files else "false"
+            "deleteFiles": "true" if delete_files else "false",
         }
-        
+
         await self._make_request("POST", "/api/v2/torrents/delete", data=data)
 
     async def get_version(self) -> Dict[str, Any]:
         """Get qBittorrent version info"""
         response = await self._make_request("GET", "/api/v2/app/version")
         version_str = response.text.strip('"')  # Remove quotes
-        
+
         # Also get build info
         try:
             build_response = await self._make_request("GET", "/api/v2/app/buildInfo")
             build_info = build_response.json()
-            return {
-                "version": version_str,
-                "build_info": build_info
-            }
+            return {"version": version_str, "build_info": build_info}
         except Exception:
             return {"version": version_str}
 
@@ -450,20 +461,22 @@ class QBittorrentClient:
         response = await self._make_request(
             "GET", "/api/v2/torrents/trackers", params={"hash": torrent_hash}
         )
-        
+
         trackers_data = response.json()
-        
+
         # Convert to simplified format
         trackers = []
         for tracker_data in trackers_data:
-            trackers.append({
-                "url": tracker_data.get("url", ""),
-                "status": tracker_data.get("status", 0),
-                "tier": tracker_data.get("tier", 0),
-                "num_peers": tracker_data.get("num_peers", 0),
-                "num_seeds": tracker_data.get("num_seeds", 0),
-                "num_leeches": tracker_data.get("num_leeches", 0),
-                "msg": tracker_data.get("msg", "")
-            })
-        
+            trackers.append(
+                {
+                    "url": tracker_data.get("url", ""),
+                    "status": tracker_data.get("status", 0),
+                    "tier": tracker_data.get("tier", 0),
+                    "num_peers": tracker_data.get("num_peers", 0),
+                    "num_seeds": tracker_data.get("num_seeds", 0),
+                    "num_leeches": tracker_data.get("num_leeches", 0),
+                    "msg": tracker_data.get("msg", ""),
+                }
+            )
+
         return trackers

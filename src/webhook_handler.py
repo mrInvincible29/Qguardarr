@@ -216,23 +216,18 @@ class WebhookHandler:
                 {
                     "status": "queued",
                     "queue_size": self.event_queue.qsize(),
-                    "processing_time_ms": round(
-                        (time.time() - start_time) * 1000, 1
-                    ),
+                    "processing_time_ms": round((time.time() - start_time) * 1000, 1),
                 },
                 status_code=202,
             )
 
         except Exception as e:
             processing_time = (time.time() - start_time) * 1000
-            logging.error(
-                f"Webhook parsing failed in {processing_time:.1f}ms: {e}"
-            )
+            logging.error(f"Webhook parsing failed in {processing_time:.1f}ms: {e}")
 
             # Still return success to qBittorrent to avoid retries
             return JSONResponse(
-                {"status": "error", "message": "Parsing failed"},
-                status_code=202
+                {"status": "error", "message": "Parsing failed"}, status_code=202
             )
 
     async def start_event_processor(self):
@@ -244,9 +239,7 @@ class WebhookHandler:
         await self.cross_seed_forwarder.start()
 
         # Start background processing task
-        self._processing_task = asyncio.create_task(
-            self._process_events_loop()
-        )
+        self._processing_task = asyncio.create_task(self._process_events_loop())
         logging.info("Webhook event processor started")
 
     async def stop(self):
@@ -341,9 +334,7 @@ class WebhookHandler:
 
             # If we know the tracker, we can trigger immediate tracker update
             if event.tracker:
-                await self.allocation_engine.schedule_tracker_update(
-                    event.tracker
-                )
+                await self.allocation_engine.schedule_tracker_update(event.tracker)
 
     async def _handle_delete_event(self, event: WebhookEvent):
         """Handle torrent delete event"""

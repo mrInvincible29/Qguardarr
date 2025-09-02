@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import aiosqlite
 
@@ -212,7 +212,9 @@ class RollbackManager:
 
                 await db.commit()
 
-                self.stats["changes_recorded"] = (self.stats["changes_recorded"] or 0) + len(valid_changes)
+                self.stats["changes_recorded"] = (
+                    self.stats["changes_recorded"] or 0
+                ) + len(valid_changes)
                 logging.debug(
                     f"Recorded {len(valid_changes)} rollback entries in batch"
                 )
@@ -229,7 +231,7 @@ class RollbackManager:
         try:
             async with aiosqlite.connect(str(self.db_path)) as db:
                 query = """
-                    SELECT torrent_hash, old_limit, new_limit, tracker_id, 
+                    SELECT torrent_hash, old_limit, new_limit, tracker_id,
                            timestamp, reason, restored
                     FROM rollback_entries
                     WHERE torrent_hash = ?
@@ -342,7 +344,9 @@ class RollbackManager:
         # The actual limit restoration should be done by the caller
 
         restored_count = await self.mark_entries_restored(list(original_limits.keys()))
-        self.stats["rollbacks_performed"] = (self.stats["rollbacks_performed"] or 0) + restored_count
+        self.stats["rollbacks_performed"] = (
+            self.stats["rollbacks_performed"] or 0
+        ) + restored_count
         self.stats["last_rollback_time"] = time.time()
 
         return restored_count

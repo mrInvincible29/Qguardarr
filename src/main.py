@@ -5,7 +5,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import uvicorn
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request

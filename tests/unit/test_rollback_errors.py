@@ -1,15 +1,18 @@
 """Error-path tests for RollbackManager to improve coverage."""
 
 import builtins
+
 import pytest
 
-from src.rollback import RollbackManager
 from src.config import RollbackSettings
+from src.rollback import RollbackManager
 
 
 @pytest.fixture
 async def mgr(tmp_path):
-    m = RollbackManager(RollbackSettings(database_path=str(tmp_path / "err.db"), track_all_changes=True))
+    m = RollbackManager(
+        RollbackSettings(database_path=str(tmp_path / "err.db"), track_all_changes=True)
+    )
     await m.initialize()
     return m
 
@@ -103,4 +106,3 @@ async def test_vacuum_database_error(monkeypatch, mgr: RollbackManager):
     monkeypatch.setattr("src.rollback.aiosqlite.connect", boom_connect)
     # Should not raise
     await mgr.vacuum_database()
-

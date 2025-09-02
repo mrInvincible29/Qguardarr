@@ -136,9 +136,7 @@ class TrackerMatcher:
 
         return results
 
-    def group_torrents_by_tracker(
-        self, torrents: List[Dict]
-    ) -> Dict[str, List[Dict]]:
+    def group_torrents_by_tracker(self, torrents: List[Dict]) -> Dict[str, List[Dict]]:
         """
         Group torrents by their matched tracker
 
@@ -182,9 +180,7 @@ class TrackerMatcher:
         self.tracker_cache.clear()
         self._compile_patterns()
 
-        logging.info(
-            f"Updated tracker configurations: {len(new_configs)} trackers"
-        )
+        logging.info(f"Updated tracker configurations: {len(new_configs)} trackers")
 
     def clear_cache(self) -> None:
         """Clear the tracker matching cache"""
@@ -220,13 +216,9 @@ class TrackerMatcher:
         errors = []
 
         # Check for catch-all pattern
-        has_catchall = any(
-            config.pattern == ".*" for config in self.tracker_configs
-        )
+        has_catchall = any(config.pattern == ".*" for config in self.tracker_configs)
         if not has_catchall:
-            errors.append(
-                "No catch-all pattern (.*) found - add a default tracker"
-            )
+            errors.append("No catch-all pattern (.*) found - add a default tracker")
 
         # Check pattern compilation
         for config in self.tracker_configs:

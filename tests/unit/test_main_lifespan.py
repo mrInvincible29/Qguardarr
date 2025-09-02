@@ -10,13 +10,13 @@ def patched_main_success(monkeypatch):
 
     # Minimal config
     from src.config import (
-        QguardarrConfig,
-        GlobalSettings,
-        QBittorrentSettings,
-        TrackerConfig,
-        RollbackSettings,
         CrossSeedSettings,
+        GlobalSettings,
         LoggingSettings,
+        QBittorrentSettings,
+        QguardarrConfig,
+        RollbackSettings,
+        TrackerConfig,
     )
 
     cfg = QguardarrConfig(
@@ -40,11 +40,19 @@ def patched_main_success(monkeypatch):
             "cross_seed": CrossSeedSettings(enabled=False),
             "trackers": [
                 TrackerConfig(
-                    id="default", name="Default", pattern=".*", max_upload_speed=1024 * 1024, priority=1
+                    id="default",
+                    name="Default",
+                    pattern=".*",
+                    max_upload_speed=1024 * 1024,
+                    priority=1,
                 )
             ],
-            "rollback": RollbackSettings(database_path="./data/test.db", track_all_changes=True),
-            "logging": LoggingSettings(level="INFO", file="./logs/test.log", max_size_mb=10, backup_count=1),
+            "rollback": RollbackSettings(
+                database_path="./data/test.db", track_all_changes=True
+            ),
+            "logging": LoggingSettings(
+                level="INFO", file="./logs/test.log", max_size_mb=10, backup_count=1
+            ),
         }
     )
 
@@ -52,7 +60,14 @@ def patched_main_success(monkeypatch):
         def load_config(self):
             return cfg
 
-    called = {"connect": 0, "disconnect": 0, "init": 0, "start": 0, "stop": 0, "cycles": 0}
+    called = {
+        "connect": 0,
+        "disconnect": 0,
+        "init": 0,
+        "start": 0,
+        "stop": 0,
+        "cycles": 0,
+    }
 
     async def fake_connect(self):
         called["connect"] += 1
@@ -76,9 +91,13 @@ def patched_main_success(monkeypatch):
     # Patch pieces used in startup
     monkeypatch.setattr(main, "ConfigLoader", DummyConfigLoader)
     monkeypatch.setattr(main.QBittorrentClient, "connect", fake_connect, raising=True)
-    monkeypatch.setattr(main.QBittorrentClient, "disconnect", fake_disconnect, raising=True)
+    monkeypatch.setattr(
+        main.QBittorrentClient, "disconnect", fake_disconnect, raising=True
+    )
     monkeypatch.setattr(main.RollbackManager, "initialize", fake_init, raising=True)
-    monkeypatch.setattr(main.WebhookHandler, "start_event_processor", fake_start, raising=True)
+    monkeypatch.setattr(
+        main.WebhookHandler, "start_event_processor", fake_start, raising=True
+    )
     monkeypatch.setattr(main.WebhookHandler, "stop", fake_stop, raising=True)
     # Ensure allocation cycle schedules a quick task
     monkeypatch.setattr(main, "allocation_cycle_task", fake_cycle_task, raising=True)
@@ -131,6 +150,7 @@ def test_lifespan_startup_failure_sets_unhealthy(monkeypatch):
 
 def test_unready_endpoints_and_error_paths(monkeypatch):
     import src.main as main
+
     client = TestClient(main.app)
 
     # Simulate unready states
@@ -156,4 +176,3 @@ def test_unready_endpoints_and_error_paths(monkeypatch):
     main.app_state["allocation_engine"] = BadEngine()
     r = client.post("/cycle/force")
     assert r.status_code == 500
-

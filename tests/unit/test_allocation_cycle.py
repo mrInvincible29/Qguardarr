@@ -1,10 +1,19 @@
 """Tests to cover run_allocation_cycle and related paths."""
 
-import pytest
 from unittest.mock import AsyncMock, Mock
 
+import pytest
+
 from src.allocation import AllocationEngine
-from src.config import QguardarrConfig, GlobalSettings, QBittorrentSettings, TrackerConfig, RollbackSettings, CrossSeedSettings, LoggingSettings
+from src.config import (
+    CrossSeedSettings,
+    GlobalSettings,
+    LoggingSettings,
+    QBittorrentSettings,
+    QguardarrConfig,
+    RollbackSettings,
+    TrackerConfig,
+)
 from src.qbit_client import TorrentInfo
 
 
@@ -20,21 +29,44 @@ def make_config() -> QguardarrConfig:
                 host="localhost",
                 port=8089,
             ),
-            "qbittorrent": QBittorrentSettings(host="localhost", port=8080, username="u", password="p", timeout=10),
+            "qbittorrent": QBittorrentSettings(
+                host="localhost", port=8080, username="u", password="p", timeout=10
+            ),
             "trackers": [
-                TrackerConfig(id="default", name="Default", pattern=".*", max_upload_speed=2 * 1024 * 1024, priority=1)
+                TrackerConfig(
+                    id="default",
+                    name="Default",
+                    pattern=".*",
+                    max_upload_speed=2 * 1024 * 1024,
+                    priority=1,
+                )
             ],
-            "rollback": RollbackSettings(database_path="./data/test.db", track_all_changes=True),
+            "rollback": RollbackSettings(
+                database_path="./data/test.db", track_all_changes=True
+            ),
             "cross_seed": CrossSeedSettings(enabled=False),
-            "logging": LoggingSettings(level="INFO", file="./logs/test.log", max_size_mb=10, backup_count=1),
+            "logging": LoggingSettings(
+                level="INFO", file="./logs/test.log", max_size_mb=10, backup_count=1
+            ),
         }
     )
 
 
 def make_torrent(hash_: str) -> TorrentInfo:
     return TorrentInfo(
-        hash=hash_, name="t", state="uploading", progress=1.0, dlspeed=0, upspeed=0, priority=0,
-        num_seeds=1, num_leechs=1, ratio=1.0, size=100, completed=100, tracker="http://tracker/announce"
+        hash=hash_,
+        name="t",
+        state="uploading",
+        progress=1.0,
+        dlspeed=0,
+        upspeed=0,
+        priority=0,
+        num_seeds=1,
+        num_leechs=1,
+        ratio=1.0,
+        size=100,
+        completed=100,
+        tracker="http://tracker/announce",
     )
 
 
@@ -53,8 +85,17 @@ async def test_run_allocation_cycle_happy(monkeypatch):
     # Simple tracker matcher: always default
     tracker_matcher = Mock()
     tracker_matcher.match_tracker.return_value = "default"
-    tracker_matcher.get_tracker_config.return_value = Mock(max_upload_speed=2 * 1024 * 1024)
-    tracker_matcher.get_cache_stats.return_value = {"cache_hits": 0, "cache_misses": 0, "cache_size": 0, "hit_rate_percent": 0.0, "pattern_matches": 0, "failed_matches": 0}
+    tracker_matcher.get_tracker_config.return_value = Mock(
+        max_upload_speed=2 * 1024 * 1024
+    )
+    tracker_matcher.get_cache_stats.return_value = {
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "cache_size": 0,
+        "hit_rate_percent": 0.0,
+        "pattern_matches": 0,
+        "failed_matches": 0,
+    }
 
     rollback = AsyncMock()
     rollback.record_batch_changes = AsyncMock(return_value=1)
@@ -114,4 +155,3 @@ async def test_update_cache_fetches_missing_limit():
     await engine._update_cache([t])
     assert engine.cache.get_current_limit("hx") == 1024
     assert engine.stats["api_calls_last_cycle"] >= 1
-

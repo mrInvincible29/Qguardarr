@@ -66,9 +66,7 @@ class TestConfigLoader:
         }
 
         # Create temporary config file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False\
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(config_data, f)
             config_path = Path(f.name)
 
@@ -119,9 +117,7 @@ class TestConfigLoader:
             },
         }
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False\
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(config_data, f)
             config_path = Path(f.name)
 
@@ -169,9 +165,7 @@ class TestConfigLoader:
         # Set environment variable
         os.environ["TEST_PASSWORD"] = "secret123"
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False\
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(config_data, f)
             config_path = Path(f.name)
 

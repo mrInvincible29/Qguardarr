@@ -2,8 +2,8 @@
 
 import pytest
 
-from src.qbit_client import QBittorrentClient
 from src.config import QBittorrentSettings
+from src.qbit_client import QBittorrentClient
 
 
 class FR:
@@ -32,7 +32,11 @@ class FakeSession:
 @pytest.mark.asyncio
 async def test_authenticate_progressive_delay(monkeypatch):
     # First attempt returns 200 with non-Ok text, then Ok
-    client = QBittorrentClient(QBittorrentSettings(host="remote", port=8080, username="admin", password="pass", timeout=5))
+    client = QBittorrentClient(
+        QBittorrentSettings(
+            host="remote", port=8080, username="admin", password="pass", timeout=5
+        )
+    )
     client.session = FakeSession([FR(200, "Fail"), FR(200, "Ok.")])
 
     slept = []
@@ -49,7 +53,11 @@ async def test_authenticate_progressive_delay(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_authenticate_ip_ban_backoff(monkeypatch):
-    client = QBittorrentClient(QBittorrentSettings(host="remote", port=8080, username="admin", password="pass", timeout=5))
+    client = QBittorrentClient(
+        QBittorrentSettings(
+            host="remote", port=8080, username="admin", password="pass", timeout=5
+        )
+    )
     # First attempt raises 403-like error, then Ok
     client.session = FakeSession([Exception("403 Forbidden"), FR(200, "Ok.")])
 
@@ -67,7 +75,12 @@ async def test_authenticate_ip_ban_backoff(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_authenticate_all_fail(monkeypatch):
-    client = QBittorrentClient(QBittorrentSettings(host="remote", port=8080, username="admin", password="pass", timeout=5))
+    client = QBittorrentClient(
+        QBittorrentSettings(
+            host="remote", port=8080, username="admin", password="pass", timeout=5
+        )
+    )
+
     # Session that always returns non-Ok response
     class AlwaysFailSession:
         async def post(self, url, data=None):

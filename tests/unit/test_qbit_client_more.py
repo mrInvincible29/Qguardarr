@@ -5,13 +5,15 @@ from typing import Any, Dict, List
 
 import pytest
 
-from src.qbit_client import QBittorrentClient
 from src.config import QBittorrentSettings
+from src.qbit_client import QBittorrentClient
 
 
 def mk_client() -> QBittorrentClient:
     return QBittorrentClient(
-        QBittorrentSettings(host="localhost", port=8080, username="u", password="p", timeout=10)
+        QBittorrentSettings(
+            host="localhost", port=8080, username="u", password="p", timeout=10
+        )
     )
 
 
@@ -82,7 +84,9 @@ async def test_get_version_with_build_info(monkeypatch):
         if endpoint == "/api/v2/app/version":
             return FakeResponse(status_code=200, text='"4.6.0"')
         if endpoint == "/api/v2/app/buildInfo":
-            return FakeResponse(status_code=200, json_data={"qt": "6", "libtorrent": "2"})
+            return FakeResponse(
+                status_code=200, json_data={"qt": "6", "libtorrent": "2"}
+            )
         raise AssertionError("Unexpected endpoint")
 
     monkeypatch.setattr(client, "_make_request", fake_req)
@@ -114,8 +118,34 @@ async def test_get_torrents_and_trackers(monkeypatch):
     client = mk_client()
 
     torrents_list = [
-        {"hash": "h1", "name": "t1", "state": "st", "progress": 1.0, "dlspeed": 0, "upspeed": 0, "priority": 0, "num_seeds": 1, "num_leechs": 1, "ratio": 1.0, "size": 1, "completed": 1},
-        {"hash": "h2", "name": "t2", "state": "st", "progress": 1.0, "dlspeed": 0, "upspeed": 0, "priority": 0, "num_seeds": 1, "num_leechs": 1, "ratio": 1.0, "size": 1, "completed": 1},
+        {
+            "hash": "h1",
+            "name": "t1",
+            "state": "st",
+            "progress": 1.0,
+            "dlspeed": 0,
+            "upspeed": 0,
+            "priority": 0,
+            "num_seeds": 1,
+            "num_leechs": 1,
+            "ratio": 1.0,
+            "size": 1,
+            "completed": 1,
+        },
+        {
+            "hash": "h2",
+            "name": "t2",
+            "state": "st",
+            "progress": 1.0,
+            "dlspeed": 0,
+            "upspeed": 0,
+            "priority": 0,
+            "num_seeds": 1,
+            "num_leechs": 1,
+            "ratio": 1.0,
+            "size": 1,
+            "completed": 1,
+        },
     ]
 
     async def fake_req(method, endpoint, **kwargs):
@@ -125,8 +155,15 @@ async def test_get_torrents_and_trackers(monkeypatch):
             # First returns working tracker, second returns DHT then fallback
             h = kwargs.get("params", {}).get("hash")
             if h == "h1":
-                return FakeResponse(json_data=[{"url": "http://tracker/announce", "status": 2}])
-            return FakeResponse(json_data=[{"url": "** [DHT] **", "status": 1}, {"url": "udp://u", "status": 1}])
+                return FakeResponse(
+                    json_data=[{"url": "http://tracker/announce", "status": 2}]
+                )
+            return FakeResponse(
+                json_data=[
+                    {"url": "** [DHT] **", "status": 1},
+                    {"url": "udp://u", "status": 1},
+                ]
+            )
         raise AssertionError("Unexpected endpoint")
 
     monkeypatch.setattr(client, "_make_request", fake_req)
@@ -143,7 +180,13 @@ async def test_upload_limit_helpers(monkeypatch):
     recorded: List[Dict[str, Any]] = []
 
     async def fake_req(method, endpoint, **kwargs):
-        recorded.append({"endpoint": endpoint, "data": kwargs.get("data"), "params": kwargs.get("params")})
+        recorded.append(
+            {
+                "endpoint": endpoint,
+                "data": kwargs.get("data"),
+                "params": kwargs.get("params"),
+            }
+        )
         if endpoint == "/api/v2/torrents/properties":
             return FakeResponse(json_data={"up_limit": 1024})
         return FakeResponse()
@@ -156,7 +199,9 @@ async def test_upload_limit_helpers(monkeypatch):
 
     await client.remove_torrent_upload_limits(["a", "b"], batch_size=10)
     # The grouping call goes through setUploadLimit with -1 limit
-    assert any(rec for rec in recorded if rec["endpoint"] == "/api/v2/torrents/setUploadLimit")
+    assert any(
+        rec for rec in recorded if rec["endpoint"] == "/api/v2/torrents/setUploadLimit"
+    )
 
 
 @pytest.mark.asyncio
@@ -170,7 +215,9 @@ async def test_add_and_delete_torrent(monkeypatch):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(client, "_make_request", good_req)
-    ok = await client.add_torrent_from_magnet("magnet:?xt=urn:btih:abc", category="cat", paused=True)
+    ok = await client.add_torrent_from_magnet(
+        "magnet:?xt=urn:btih:abc", category="cat", paused=True
+    )
     assert ok is True
     await client.delete_torrent("deadbeef", delete_files=False)
 
@@ -192,4 +239,3 @@ async def test_connect_sets_flags(monkeypatch):
     st = client.get_stats()
     assert st["connected"] is True
     assert st["auth_time"] is not None
-
