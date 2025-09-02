@@ -7,6 +7,15 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 ## [Unreleased]
 - Additions and improvements under development.
 
+### Added
+- Support for unlimited per-tracker caps by setting `max_upload_speed: -1` in tracker config.
+- Allocation engine sets per-torrent upload to `-1` for trackers configured as unlimited.
+- Unit tests for catch-all unlimited behavior, switching a tracker from finite to unlimited (removes caps), specific-over-default precedence, and overlapping pattern order.
+
+### Documentation
+- README: Document unlimited (`-1`) semantics, matching precedence, and multi-tracker handling.
+- Config examples: Note that `-1` means unlimited/no cap for trackers (including catch-all).
+
 ## [0.1.0] - 2025-09-02
 ### Added
 - Phase 1 per‑tracker upload limits with equal distribution.
