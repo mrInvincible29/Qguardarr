@@ -1,3 +1,5 @@
+# Runtime dependencies only (keep dev/test in requirements-dev.txt)
+
 # Core web framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
@@ -19,18 +21,3 @@ numpy>=1.26.0
 
 # Monitoring and logging
 structlog==23.2.0
-
-# Development and testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
-pytest-mock==3.12.0
-black==23.11.0
-isort==5.12.0
-mypy==1.7.1
-
-# File watching for hot reload
-watchfiles==0.21.0
-
-# Process management
-psutil==5.9.6
