@@ -17,6 +17,12 @@ global:
   host: "0.0.0.0"
   port: 8089
 
+  # Phase 2 (optional): Smart scoring + weighted allocation within trackers
+  # Set to 'weighted' to enable ActivityScorer + proportional allocation
+  allocation_strategy: "equal"  # 'equal' (default) or 'weighted'
+  # Cap the actively managed set size for performance; others remain untouched
+  max_managed_torrents: 1000
+
 # qBittorrent Web UI connection
 qbittorrent:
   host: "localhost"  # qBittorrent host
@@ -76,8 +82,13 @@ logging:
 
 # Phase 1 Notes:
 # - This implements hard limits only (no soft limits/borrowing yet)
-# - Equal distribution within each tracker
+# - Equal distribution within each tracker by default
 # - Start with rollout_percentage: 10 for safety
 # - Increase rollout_percentage gradually: 25, 50, 75, 100
 # - Monitor memory usage and performance
 # - Check logs for any errors or warnings
+
+# Phase 2 Notes:
+# - Enable allocation_strategy: 'weighted' to distribute per tracker based on activity
+# - Selection uses scoring to keep only top-N torrents under active management
+# - Per-torrent bounds (internal defaults): min 10KB/s, max 60% of tracker cap

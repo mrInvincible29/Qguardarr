@@ -54,6 +54,21 @@ class GlobalSettings(BaseModel):
     rollout_percentage: int = Field(default=10, ge=1, le=100)
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8089, ge=1024, le=65535)
+    # Phase 2 controls
+    allocation_strategy: str = Field(
+        default="equal", description="Allocation strategy: 'equal' or 'weighted'"
+    )
+    max_managed_torrents: int = Field(
+        default=1000, ge=1, description="Maximum number of torrents to actively manage"
+    )
+
+    @field_validator("allocation_strategy")
+    @classmethod
+    def validate_allocation_strategy(cls, v: str) -> str:
+        allowed = {"equal", "weighted"}
+        if v not in allowed:
+            raise ValueError(f"allocation_strategy must be one of {allowed}")
+        return v
 
 
 class QBittorrentSettings(BaseModel):

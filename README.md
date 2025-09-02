@@ -23,7 +23,7 @@ This is the **Phase 1 MVP** implementation featuring:
 ✅ **Gradual rollout** - Start with 10% of torrents, increase safely  
 ✅ **Docker deployment** - One-command setup with docker-compose  
 
-**Coming in Phase 2**: Soft limits with priority-based borrowing, smart torrent scoring
+New in Phase 2 (optional): Weighted within-tracker allocation with smart torrent scoring. Defaults remain Phase 1 equal-split unless enabled.
 
 ## Quick Start
 
@@ -84,14 +84,20 @@ chmod +x scripts/start.sh
 
 ## Configuration
 
-### Important Settings for Phase 1
+### Important Settings
 
 **Safety Settings (start here)**:
 ```yaml
 global:
-  rollout_percentage: 10  # Start with 10% of torrents
-  update_interval: 300    # Check every 5 minutes
-  differential_threshold: 0.2  # Only update >20% changes
+  # Safety & performance
+  rollout_percentage: 10           # Start with 10% of torrents
+  update_interval: 300             # Check every 5 minutes
+  differential_threshold: 0.2      # Only update >20% changes
+  max_api_calls_per_cycle: 500
+
+  # Phase 2 (optional):
+  allocation_strategy: equal       # equal (default) or weighted
+  max_managed_torrents: 1000       # cap the actively managed set
 ```
 
 **Tracker Configuration** (customize for your trackers):
@@ -116,6 +122,14 @@ trackers:
 - Specific vs default: If a torrent matches a specific tracker and the catch‑all, the specific tracker’s limit applies (order precedence).
 - Torrents with multiple trackers: We query qBittorrent for a torrent’s trackers and use a single URL — the first “working” (status=2) tracker, else the first non‑error URL. Matching is performed on that single URL; we don’t aggregate across multiple tracker URLs for a torrent in Phase 1.
 
+### Phase 2 Weighted Strategy
+
+- Scoring: torrents get a 0–1 score using current upload, recent activity, and peers.
+- Selection: only top `max_managed_torrents` are actively managed.
+- Allocation: each tracker’s cap is distributed proportionally by score.
+- Bounds: per-torrent min 10 KB/s; per-torrent max 60% of tracker cap.
+- Defaults: Phase 1 equal-split remains the default; turn on via `allocation_strategy: weighted`.
+
 ### Gradual Deployment Process
 
 1. **Start conservative**: `rollout_percentage: 10`
@@ -134,6 +148,39 @@ curl http://localhost:8089/health
 ```bash
 curl http://localhost:8089/stats
 curl http://localhost:8089/stats/trackers
+```
+
+Stats payload notes:
+- `managed_torrent_count`: number of torrents currently under active management (Phase 2 selection).
+- `score_distribution`: counts of torrents by score bucket: `high` (>=0.8), `medium` (>=0.5), `low` (>=0.2), `ignored` (<0.2).
+- `api_calls_last_cycle`, `last_cycle_duration`: quick health indicators for each allocation pass.
+- `/stats/trackers` includes per-tracker configured limit (MB/s), active torrent count, and current usage (MB/s).
+
+### View Current Config
+```bash
+curl http://localhost:8089/config | jq
+```
+
+Example (sanitized):
+```json
+{
+  "global": {
+    "update_interval": 300,
+    "active_torrent_threshold_kb": 10,
+    "max_api_calls_per_cycle": 500,
+    "differential_threshold": 0.2,
+    "rollout_percentage": 10,
+    "host": "0.0.0.0",
+    "port": 8089,
+    "allocation_strategy": "equal",
+    "max_managed_torrents": 1000
+  },
+  "qbittorrent": { "host": "localhost", "port": 8080, "username": "admin", "password": "***" },
+  "cross_seed": { "enabled": false, "url": "http://localhost:2468/api/webhook", "api_key": "***" },
+  "trackers": [ { "id": "default", "pattern": ".*", "max_upload_speed": 2097152, "priority": 1 } ],
+  "rollback": { "database_path": "./data/rollback.db", "track_all_changes": true },
+  "logging": { "level": "INFO", "file": "./logs/qguardarr.log" }
+}
 ```
 
 ### Force Update Cycle
@@ -262,11 +309,10 @@ isort src/ tests/
 mypy src/
 ```
 
-## Next Steps - Phase 2 & Beyond
+## Next Steps
 
-🔄 **Phase 2** (Week 2): Smart torrent scoring and differential updates  
-🚀 **Phase 3** (Week 3): Soft limits with priority-based borrowing  
-📊 **Phase 4** (Week 4): Advanced monitoring and production polish  
+🚀 Phase 3: Soft limits with cross-tracker borrowing + priorities  
+📊 Phase 4: Advanced monitoring and production polish  
 
 ---
 

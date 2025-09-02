@@ -144,6 +144,77 @@ class TorrentCache:
         }
 
 
+class ActivityScorer:
+    """
+    Score torrents based on how actively they need management.
+    Conservative defaults match the Phase 2 plan.
+    """
+
+    def __init__(
+        self, management_threshold: float = 0.5, max_managed_torrents: int = 1000
+    ):
+        self.management_threshold = management_threshold
+        self.max_managed_torrents = max_managed_torrents
+
+    def calculate_priority_score(self, torrent) -> float:
+        """Return a 0-1 score indicating management priority.
+
+        Heuristics:
+        - If currently uploading >10KB/s → 1.0
+        - Recent activity buckets: <1h → 0.8, <6h → 0.5, <24h → 0.2, else 0.0
+        - Peer boost: +0.3 if peers >20, +0.1 if >5 (clamped to 1.0)
+        """
+        try:
+            if getattr(torrent, "upspeed", 0) > 10 * 1024:  # >10KB/s
+                return 1.0
+
+            last_activity = getattr(torrent, "last_activity", 0) or 0
+            now = int(time.time())
+            hours_since_activity = max(0.0, (now - int(last_activity)) / 3600.0)
+
+            if hours_since_activity < 1:
+                score = 0.8
+            elif hours_since_activity < 6:
+                score = 0.5
+            elif hours_since_activity < 24:
+                score = 0.2
+            else:
+                score = 0.0
+
+            # Peer boost based on potential
+            num_peers = 0
+            # Prefer attribute if provided; otherwise derive from seeds/leechers
+            if hasattr(torrent, "num_peers"):
+                try:
+                    num_peers = int(torrent.num_peers)  # type: ignore[attr-defined]
+                except Exception:
+                    num_peers = 0
+            else:
+                num_peers = int(getattr(torrent, "num_seeds", 0)) + int(
+                    getattr(torrent, "num_leechs", 0)
+                )
+
+            if num_peers > 20:
+                score = min(1.0, score + 0.3)
+            elif num_peers > 5:
+                score = min(1.0, score + 0.1)
+
+            return float(score)
+        except Exception:
+            # Defensive: never break allocation cycle due to scoring
+            return 0.0
+
+    def should_manage(self, torrent, available_slots: int, total_torrents: int) -> bool:
+        """Decide whether to include a torrent in active management set."""
+        score = self.calculate_priority_score(torrent)
+        if score >= 0.8:
+            return True
+        if score >= 0.5:
+            # Medium-priority torrents are generally worth managing when slots remain
+            return available_slots > 0
+        return score > 0.3 and available_slots > 500
+
+
 class GradualRollout:
     """Safely test on subset of torrents first"""
 
@@ -180,6 +251,8 @@ class AllocationEngine:
         self.rollback_manager = rollback_manager
 
         self.cache = TorrentCache(capacity=5000)
+        # Phase 2: scoring helper (used when weighted strategies are enabled)
+        self.activity_scorer = ActivityScorer()
         self.gradual_rollout = GradualRollout(config.global_settings.rollout_percentage)
 
         # Priority queues for processing
@@ -197,6 +270,9 @@ class AllocationEngine:
             "last_cycle_time": None,
             "active_torrents": 0,
             "managed_torrents": 0,
+            # Phase 2 stats
+            "managed_torrent_count": 0,
+            "score_distribution": {"high": 0, "medium": 0, "low": 0, "ignored": 0},
         }
 
     async def run_allocation_cycle(self):
@@ -219,8 +295,19 @@ class AllocationEngine:
             # Step 3: Update cache with current torrent data
             await self._update_cache(managed_torrents)
 
-            # Step 4: Calculate new limits (hard limits for Phase 1)
-            new_limits = self._calculate_limits_phase1(managed_torrents)
+            # Step 4: Calculate new limits (strategy-based)
+            strategy = getattr(
+                self.config.global_settings, "allocation_strategy", "equal"
+            )
+            torrents_for_calc = managed_torrents
+            if strategy == "weighted":
+                torrents_for_calc = self.select_torrents_for_management(
+                    managed_torrents
+                )
+            if strategy == "weighted":
+                new_limits = self._calculate_limits_phase2(torrents_for_calc)
+            else:
+                new_limits = self._calculate_limits_phase1(torrents_for_calc)
 
             # Step 5: Apply only necessary changes (differential updates)
             changes_applied = await self._apply_differential_updates(new_limits)
@@ -364,6 +451,156 @@ class AllocationEngine:
 
         return new_limits
 
+    def _calculate_limits_phase2(self, torrents: List[TorrentInfo]) -> Dict[str, int]:
+        """
+        Phase 2: Weighted distribution within each tracker based on simple scoring.
+
+        Scoring per torrent within a tracker:
+          score = 0.6 * min(peers/20, 1.0) + 0.4 * min(upload_speed/1MBps, 1.0)
+
+        Then distribute tracker cap proportionally with per-torrent bounds:
+          - min 10KB/s
+          - max 60% of tracker cap
+        """
+        new_limits: Dict[str, int] = {}
+
+        # Group torrents by tracker
+        tracker_groups: Dict[str, List[TorrentInfo]] = {}
+        for torrent in torrents:
+            tracker_id = self.tracker_matcher.match_tracker(torrent.tracker)
+            tracker_groups.setdefault(tracker_id, []).append(torrent)
+
+        for tracker_id, group in tracker_groups.items():
+            tracker_config = self.tracker_matcher.get_tracker_config(tracker_id)
+            if not tracker_config:
+                continue
+
+            tracker_limit = tracker_config.max_upload_speed
+
+            # Unlimited tracker: set all to unlimited
+            if tracker_limit <= 0:
+                for torrent in group:
+                    new_limits[torrent.hash] = -1
+                continue
+
+            if len(group) == 1:
+                new_limits[group[0].hash] = tracker_limit
+                continue
+
+            # Compute scores
+            scores: Dict[str, float] = {}
+            for t in group:
+                peer_score = min(max(t.num_peers, 0) / 20.0, 1.0)
+                speed_score = min(
+                    max(t.upspeed, 0) / 1048576.0, 1.0
+                )  # bytes per sec normalized by 1MB/s
+                scores[t.hash] = 0.6 * peer_score + 0.4 * speed_score
+
+            total_score = sum(scores.values())
+            min_limit = 10240  # 10KB/s
+            max_fraction = 0.6
+
+            # First-pass proportional allocation
+            allocations: Dict[str, float] = {}
+            if total_score <= 0:
+                # Equal split fallback
+                for t in group:
+                    allocations[t.hash] = tracker_limit / float(len(group))
+            else:
+                for t in group:
+                    proportion = scores[t.hash] / total_score
+                    allocations[t.hash] = tracker_limit * proportion
+
+            # Apply per-torrent bounds
+            capped: Dict[str, float] = {}
+            max_cap = tracker_limit * max_fraction
+            for h, alloc in allocations.items():
+                capped[h] = max(min_limit, min(alloc, max_cap))
+
+            total_alloc = sum(capped.values())
+
+            if total_alloc < tracker_limit:
+                # Distribute remaining to torrents with headroom up to their max_cap
+                remaining = tracker_limit - total_alloc
+                headroom: Dict[str, float] = {
+                    h: max(0.0, max_cap - capped[h]) for h in capped
+                }
+                total_headroom = sum(headroom.values())
+                if total_headroom > 0 and remaining > 0:
+                    for h in capped:
+                        share = (
+                            remaining * (headroom[h] / total_headroom)
+                            if total_headroom > 0
+                            else 0
+                        )
+                        capped[h] = min(max_cap, capped[h] + share)
+
+            elif total_alloc > tracker_limit:
+                # Reduce proportionally but not below min_limit
+                reduce_by = total_alloc - tracker_limit
+                reducible: Dict[str, float] = {
+                    h: max(0.0, capped[h] - min_limit) for h in capped
+                }
+                total_reducible = sum(reducible.values())
+                if total_reducible > 0 and reduce_by > 0:
+                    for h in capped:
+                        cut = (
+                            reduce_by * (reducible[h] / total_reducible)
+                            if total_reducible > 0
+                            else 0
+                        )
+                        capped[h] = max(min_limit, capped[h] - cut)
+
+            # Finalize ints with clamps to maintain bounds after rounding
+            max_int_cap = int(max_cap)
+            for h, alloc in capped.items():
+                v = int(round(alloc))
+                if v < min_limit:
+                    v = min_limit
+                if v > max_int_cap:
+                    v = max_int_cap
+                new_limits[h] = v
+
+            # Final correction for rounding while respecting bounds
+            current_sum = sum(new_limits[h] for h in capped.keys())
+            delta = tracker_limit - current_sum
+            if delta != 0:
+                if delta > 0:
+                    # Try to add delta to an entry with headroom
+                    candidates = sorted(
+                        capped.keys(),
+                        key=lambda x: (max_cap - new_limits[x]),
+                        reverse=True,
+                    )
+                    for h in candidates:
+                        head = int(max(0, round(max_cap) - new_limits[h]))
+                        if head <= 0:
+                            continue
+                        add = min(delta, head)
+                        new_limits[h] += add
+                        delta -= add
+                        if delta == 0:
+                            break
+                else:
+                    # Remove |delta| while respecting min_limit
+                    need = -delta
+                    candidates = sorted(
+                        capped.keys(),
+                        key=lambda x: (new_limits[x] - min_limit),
+                        reverse=True,
+                    )
+                    for h in candidates:
+                        room = int(max(0, new_limits[h] - min_limit))
+                        if room <= 0:
+                            continue
+                        cut = min(need, room)
+                        new_limits[h] -= cut
+                        need -= cut
+                        if need == 0:
+                            break
+
+        return new_limits
+
     async def _apply_differential_updates(self, new_limits: Dict[str, int]) -> int:
         """Apply only limits that need updating"""
         updates_needed = {}
@@ -459,6 +696,49 @@ class AllocationEngine:
         stats["estimated_memory_mb"] = round(cache_size_mb, 2)
 
         return stats
+
+    # ------------------------- Phase 2 helpers -------------------------
+    def select_torrents_for_management(self, all_torrents: List[Any]) -> List[Any]:
+        """
+        Select subset of torrents worth managing based on activity scoring.
+        Returns the selected torrent objects, ordered by descending score.
+        """
+        # Reset distribution
+        sd = {"high": 0, "medium": 0, "low": 0, "ignored": 0}
+
+        scored: List[Tuple[float, Any]] = []
+        for t in all_torrents:
+            score = self.activity_scorer.calculate_priority_score(t)
+            if score >= 0.8:
+                sd["high"] += 1
+            elif score >= 0.5:
+                sd["medium"] += 1
+            elif score >= 0.2:
+                sd["low"] += 1
+            else:
+                sd["ignored"] += 1
+
+            if score > 0.2:
+                scored.append((score, t))
+
+        # Sort by score desc
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        selected: List[Any] = []
+        max_n = self.activity_scorer.max_managed_torrents
+
+        for score, torrent in scored:
+            if len(selected) >= max_n:
+                break
+            remaining = max_n - len(selected)
+            if self.activity_scorer.should_manage(
+                torrent, remaining, len(all_torrents)
+            ):
+                selected.append(torrent)
+
+        self.stats["managed_torrent_count"] = len(selected)
+        self.stats["score_distribution"] = sd
+        return selected
 
     def get_tracker_stats(self) -> Dict[str, Any]:
         """Get per-tracker statistics"""

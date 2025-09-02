@@ -71,7 +71,7 @@ trackers:
   - id: "default"
     name: "Default Trackers"
     pattern: ".*"  # Catch-all (must be last)
-    max_upload_speed: 1048576  # 1 MB/s (-1 for unlimited/no cap)
+    max_upload_speed: 1048576  # 1 MB/s
     priority: 1
 
 # Rollback settings
