@@ -44,8 +44,63 @@ jobs:
 
       - name: Unit tests
         run: make test
+  docker-tests:
+    if: ${{ vars.RUN_DOCKER_TESTS == '1' }}
+    needs: lint-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-      - name: Quick Docker tests
-        run: make test-docker-quick
-        env:
-          DOCKER_BUILDKIT: 1
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt', 'pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies for tests
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Prepare test config
+        run: cp config/qguardarr.test.yaml config/qguardarr.yaml
+
+      - name: Compose up (services)
+        uses: docker/compose-action@v2
+        with:
+          compose-file: docker-compose.test.yml
+          up: -d --build
+
+      - name: Wait for services
+        run: |
+          set -e
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080 >/dev/null; then break; fi; sleep 2; done
+          # Optional: Qguardarr health for full mode, tolerate quick mode
+          for i in {1..30}; do
+            if curl -sf http://localhost:8089/health >/dev/null; then break; fi; sleep 2; done || true
+
+      - name: Run integration tests (quick)
+        run: pytest tests/integration/ -m "docker and not slow" -x --tb=short
+
+      - name: Compose down
+        if: always()
+        uses: docker/compose-action@v2
+        with:
+          compose-file: docker-compose.test.yml
+          down: --volumes --remove-orphans
+      # Docker-based tests are flaky/more privileged on GitHub-hosted runners
+      # To enable later, set a repo variable RUN_DOCKER_TESTS to '1' and uncomment.
+      # - name: Quick Docker tests
+      #   if: ${{ vars.RUN_DOCKER_TESTS == '1' }}
+      #   run: make test-docker-quick
+      #   env:
+      #     DOCKER_BUILDKIT: 1

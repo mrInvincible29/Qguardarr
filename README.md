@@ -175,6 +175,8 @@ python -c "from src.config import ConfigLoader; ConfigLoader().load_config(); pr
 make test-docker-quick
 ```
 
+Note: CI does not run Docker tests by default on GitHub-hosted runners. Run them locally, or enable them by setting a repo variable `RUN_DOCKER_TESTS=1` and updating the workflow as needed.
+
 ## Troubleshooting
 
 ### Common Issues

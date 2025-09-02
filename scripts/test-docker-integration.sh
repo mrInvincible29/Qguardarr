@@ -14,6 +14,7 @@ NC='\033[0m' # No Color
 COMPOSE_FILE="docker-compose.test.yml"
 PROJECT_NAME="qguardarr-test"
 TEST_TIMEOUT=300  # 5 minutes total timeout
+COMPOSE=""
 
 # Parse command line arguments
 QUICK_MODE=false
@@ -81,7 +82,12 @@ check_docker() {
         return 1
     fi
     
-    if ! command -v docker-compose &> /dev/null; then
+    # Detect Compose v2 plugin or legacy docker-compose
+    if docker compose version &> /dev/null; then
+        COMPOSE="docker compose"
+    elif command -v docker-compose &> /dev/null; then
+        COMPOSE="docker-compose"
+    else
         log ERROR "Docker Compose is not installed or not in PATH"
         return 1
     fi
@@ -95,7 +101,7 @@ cleanup() {
     log INFO "Cleaning up Docker containers and volumes..."
     
     # Stop and remove containers
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" down --volumes --remove-orphans 2>/dev/null || true
+    $COMPOSE -f "$COMPOSE_FILE" -p "$PROJECT_NAME" down --volumes --remove-orphans 2>/dev/null || true
     
     # Clean up any leftover containers with our project name
     docker ps -a --filter "name=$PROJECT_NAME" --format "{{.ID}}" | xargs -r docker rm -f 2>/dev/null || true
@@ -138,15 +144,15 @@ start_containers() {
     log INFO "Starting Docker containers..."
     
     # Pull images first (with timeout)
-    timeout 180 docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" pull || {
+    timeout 180 $COMPOSE -f "$COMPOSE_FILE" -p "$PROJECT_NAME" pull || {
         log WARNING "Image pull timed out or failed, continuing with existing images"
     }
     
     # Start containers
     if $VERBOSE; then
-        docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --build
+        $COMPOSE -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --build
     else
-        docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --build > /dev/null 2>&1
+        $COMPOSE -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --build > /dev/null 2>&1
     fi
     
     if [ $? -ne 0 ]; then
@@ -286,19 +292,19 @@ run_health_checks() {
 # Function to show container logs
 show_container_logs() {
     log INFO "Container status:"
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" ps
+    $COMPOSE -f "$COMPOSE_FILE" -p "$PROJECT_NAME" ps
     
     echo ""
     log INFO "Recent container logs:"
     
     echo ""
     echo "=== qBittorrent logs ==="
-    docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" logs --tail=20 qbittorrent-test || true
+    $COMPOSE -f "$COMPOSE_FILE" -p "$PROJECT_NAME" logs --tail=20 qbittorrent-test || true
     
     if ! $QUICK_MODE; then
         echo ""
         echo "=== Qguardarr logs ==="
-        docker-compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" logs --tail=20 qguardarr-test || true
+        $COMPOSE -f "$COMPOSE_FILE" -p "$PROJECT_NAME" logs --tail=20 qguardarr-test || true
     fi
 }
 
