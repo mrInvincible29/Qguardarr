@@ -7,6 +7,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from subprocess import CalledProcessError
 from typing import Dict, List, Optional, Tuple
 
 import httpx
@@ -22,6 +23,8 @@ class DockerManager:
         self.compose_file = "docker-compose.test.yml"
         self.project_name = "qguardarr-test"
         self.containers_started = False
+        # Will hold the detected Docker Compose command prefix, e.g. ["docker-compose"] or ["docker", "compose"]
+        self.compose_cmd: Optional[List[str]] = None
 
     def is_docker_available(self) -> bool:
         """Check if Docker is available and running"""
@@ -34,17 +37,71 @@ class DockerManager:
             return False
 
     def is_compose_available(self) -> bool:
-        """Check if Docker Compose is available"""
+        """Check if Docker Compose is available (v1 or v2 plugin)."""
+        return self._detect_compose_cmd() is not None
+
+    def _detect_compose_cmd(self) -> Optional[List[str]]:
+        """Detect the Docker Compose command.
+
+        Returns the command list to invoke Compose or None if unavailable.
+        Prefers legacy `docker-compose` if present; otherwise falls back to `docker compose` plugin.
+        Caches the result in `self.compose_cmd`.
+        """
+        if self.compose_cmd is not None:
+            return self.compose_cmd
+
+        # Try legacy docker-compose first
         try:
             result = subprocess.run(
-                ["docker-compose", "--version"],
+                ["docker-compose", "version"], capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                self.compose_cmd = ["docker-compose"]
+                return self.compose_cmd
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+        # Try Docker Compose v2 plugin: `docker compose`
+        try:
+            result = subprocess.run(
+                ["docker", "compose", "version"],
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-            return result.returncode == 0
+            if result.returncode == 0:
+                self.compose_cmd = ["docker", "compose"]
+                return self.compose_cmd
         except (subprocess.TimeoutExpired, FileNotFoundError):
-            return False
+            pass
+
+        self.compose_cmd = None
+        return None
+
+    def _compose_run(
+        self,
+        args: List[str],
+        *,
+        capture_output: bool = True,
+        text: bool = True,
+        timeout: Optional[int] = None,
+        check: bool = False,
+    ) -> subprocess.CompletedProcess:
+        """Run a Docker Compose command using detected interface.
+
+        Raises FileNotFoundError if Compose is not available.
+        """
+        cmd = self._detect_compose_cmd()
+        if not cmd:
+            raise FileNotFoundError("Docker Compose not available")
+        full_cmd = [*cmd, *args]
+        return subprocess.run(
+            full_cmd,
+            capture_output=capture_output,
+            text=text,
+            timeout=timeout,
+            check=check,
+        )
 
     def cleanup_containers(self) -> bool:
         """Stop and remove all test containers"""
@@ -52,9 +109,8 @@ class DockerManager:
             logger.info("Cleaning up Docker containers...")
 
             # Stop containers
-            subprocess.run(
+            self._compose_run(
                 [
-                    "docker-compose",
                     "-f",
                     self.compose_file,
                     "-p",
@@ -118,9 +174,8 @@ class DockerManager:
             )
 
             # Start containers
-            result = subprocess.run(
+            result = self._compose_run(
                 [
-                    "docker-compose",
                     "-f",
                     self.compose_file,
                     "-p",
