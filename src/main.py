@@ -232,9 +232,11 @@ async def force_cycle():
 
 @app.post("/rollback")
 async def rollback_changes(request: Request):
-    """Rollback all changes"""
+    """Rollback all changes and restore original per-torrent limits"""
     if not (rollback_manager := app_state.get("rollback_manager")):
         raise HTTPException(status_code=503, detail="Service not ready")
+    if not (qbit_client := app_state.get("qbit_client")):
+        raise HTTPException(status_code=503, detail="qBittorrent client not ready")
 
     try:
         # Parse request body
@@ -249,7 +251,19 @@ async def rollback_changes(request: Request):
             )
 
         start_time = time.time()
-        changes_count = await rollback_manager.rollback_all_changes(reason)
+
+        # Get original limits to restore
+        original_limits = await rollback_manager.get_rollback_data_for_application()
+
+        # Apply original limits back to qBittorrent in batches
+        changes_count = 0
+        if original_limits:
+            await qbit_client.set_torrents_upload_limits_batch(original_limits)
+            changes_count = len(original_limits)
+
+            # Mark entries restored
+            await rollback_manager.mark_entries_restored(list(original_limits.keys()))
+
         duration = time.time() - start_time
 
         logging.warning(

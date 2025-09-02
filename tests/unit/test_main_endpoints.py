@@ -144,12 +144,22 @@ def app_client(monkeypatch, test_config):
 
     main.app_state["webhook_handler"] = DummyWebhook()
 
-    # Ensure rollback manager is available
+    # Ensure rollback manager and qbit client are available for /rollback
     class DummyRollback:
-        async def rollback_all_changes(self, reason: str = "manual_rollback") -> int:
-            return 3
+        async def get_rollback_data_for_application(self):
+            # Simulate 3 torrents needing rollback to -1
+            return {"h1": -1, "h2": -1, "h3": -1}
+
+        async def mark_entries_restored(self, hashes):
+            return len(hashes)
+
+    class DummyQbit:
+        async def set_torrents_upload_limits_batch(self, limits):
+            # Accept any limits
+            return None
 
     main.app_state["rollback_manager"] = DummyRollback()
+    main.app_state["qbit_client"] = DummyQbit()
     return client
 
 
