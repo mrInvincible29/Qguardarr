@@ -23,7 +23,6 @@ This is the **Phase 1 MVP** implementation featuring:
 ✅ **Gradual rollout** - Start with 10% of torrents, increase safely  
 ✅ **Docker deployment** - One-command setup with docker-compose  
 
-New in Phase 2 (optional): Weighted within-tracker allocation with smart torrent scoring. Defaults remain Phase 1 equal-split unless enabled.
 
 ## Quick Start
 
@@ -119,7 +118,7 @@ trackers:
     
   - id: "default" 
     pattern: ".*"  # Catch-all (must be last)
-    max_upload_speed: 2097152  # 2 MB/s (-1 for unlimited/no cap)
+    max_upload_speed: -1  # unlimited/no cap for unmatched torrents
     priority: 1
 ```
 
@@ -131,108 +130,29 @@ trackers:
 - Specific vs default: If a torrent matches a specific tracker and the catch‑all, the specific tracker’s limit applies (order precedence).
 - Torrents with multiple trackers: We query qBittorrent for a torrent’s trackers and use a single URL — the first “working” (status=2) tracker, else the first non‑error URL. Matching is performed on that single URL; we don’t aggregate across multiple tracker URLs for a torrent in Phase 1.
 
-### Phase 2 Weighted Strategy
+### Strategies
 
-- Scoring: torrents get a 0–1 score using current upload, recent activity, and peers.
-- Selection: only top `max_managed_torrents` are actively managed.
-- Allocation: each tracker’s cap is distributed proportionally by score.
-- Bounds: per-torrent min 10 KB/s; per-torrent max 60% of tracker cap.
-- Defaults: Phase 1 equal-split remains the default; turn on via `allocation_strategy: weighted`.
+Qguardarr supports three strategies controlled by `global.allocation_strategy`:
+- `equal` (Phase 1): equal split per tracker with a 10 KiB/s per‑torrent floor.
+- `weighted` (Phase 2): proportional within‑tracker based on peers/speed; bounds: min 10 KiB/s, max 60% of tracker cap.
+- `soft` (Phase 3): cross‑tracker borrowing of unused capacity, weighted by tracker priority, with smoothing to avoid oscillation.
 
-### Phase 3 Soft Limits (Borrowing + Smoothing)
+Strategy selection (flow)
+```
+Start
+  |
+  |-- Prefer simplicity / one tracker / few torrents?  --> equal
+  |
+  |-- Many torrents per tracker; stronger should get more?  --> weighted
+  |
+  |-- Multiple trackers; some under-used, others starved?    --> soft
+```
 
-- Borrowing: unused capacity across trackers forms a pool. Trackers near/over their base cap borrow from this pool, weighted by tracker `priority`.
-- Caps: borrowing per tracker is capped by `max_borrow_fraction` of its base cap (default 50%).
-- Smoothing: effective tracker caps are smoothed with EMA (`smoothing_alpha`) and a minimal change gate (`min_effective_delta`) to avoid churn.
-- Strategy: enable via `allocation_strategy: soft` in `global`.
+See the full Strategy Guide for examples and tuning: [STRATEGIES.md](STRATEGIES.md)
 
-Which strategy should I use?
-----------------------------
+### Strategy Guide
 
-- Example assumptions for all scenarios below
-  - Upstream link speed: 100 MiB/s. Per‑tracker caps in the examples are well below this link so the link itself is not the limiting factor.
-  - Catch‑all (default) tracker: pattern ".*" at the end; any torrent that doesn’t match a specific tracker maps to this default. In the examples, the default is unlimited (max_upload_speed: -1), so torrents mapped to it get unlimited per‑torrent upload (‑1).
-
-- equal (Phase 1)
-  - Best for: simple setups, few torrents, strict per‑tracker caps, lowest complexity.
-  - How it works: equal split of a tracker's cap across its active torrents (with a small per‑torrent minimum floor).
-  - Advantages: predictable, easy to reason about, minimal churn/API calls.
-  - Drawbacks: can under‑utilize capacity when many torrents are weak (each still gets a small slice).
-  - Example (with catch‑all):
-    - T (cap 4 MiB/s) has 4 active torrents → each ≈ 1.00 MiB/s.
-    - Default (unlimited) has 2 active torrents that didn’t match any specific tracker → both torrents are set to unlimited (‑1 per‑torrent limit).
-    - If T has 400 torrents, equal share ≈ 10 KiB/s but the floor is 10 KiB/s; many torrents sit at the floor and T may not fully saturate if peers are weak. Torrents on the unlimited default remain uncapped.
-
-- weighted (Phase 2)
-  - Best for: trackers with many concurrent torrents where you want the healthier torrents (more peers / more current upload) to get more.
-  - How it works: allocates a tracker's cap proportionally to a simple score (peers ×0.6 + current speed ×0.4), with per‑torrent min 10 KiB/s and per‑torrent max 60% of tracker cap.
-  - Advantages: better within‑tracker efficiency; strong torrents get larger shares while weak torrents keep a minimum.
-  - Drawbacks: more dynamic; no cross‑tracker borrowing (unused bandwidth on one tracker can’t help others).
-  - Example (with catch‑all):
-    - Tracker T cap 6 MiB/s, two torrents:
-      - A: 40 peers, 0.8 MiB/s now; B: 5 peers, 0.2 MiB/s.
-      - Scores ≈ A: 0.6×(40/20→1.0) + 0.4×(0.8/1.0→0.8) = 0.6 + 0.32 = 0.92.
-      - B: 0.6×(5/20→0.25) + 0.4×(0.2/1.0→0.2) = 0.15 + 0.08 = 0.23.
-      - Total score 1.15. A ≈ (0.92/1.15)×6 = 4.80 MiB/s, B ≈ 1.20 MiB/s (both within per‑torrent max 60% = 3.6 MiB/s → A capped to 3.6 MiB/s, extra redistributed to B).
-    - Default tracker (unlimited) has one torrent D that didn’t match any specific tracker → D is set to unlimited (‑1). For unlimited trackers, within‑tracker weighting is skipped by design.
-
-- soft (Phase 3)
-  - Best for: multi‑tracker setups where total bandwidth fluctuates and you want to reuse unused capacity across trackers, with priorities.
-  - How it works:
-    - Compute each tracker’s base cap usage; unused capacity forms a global pool.
-    - Trackers near/over their base cap qualify to borrow. Borrowing shares are weighted by tracker priority × need.
-    - Each tracker’s borrowing is capped (max_borrow_fraction × base cap). Effective caps are smoothed (EMA) and have a minimum relative change gate to avoid oscillations.
-  - Advantages: highest overall utilization; priorities bias important trackers; smoothing reduces churn; preview endpoint helps inspect changes first.
-- Drawbacks: more moving parts; effective caps vary over time; knobs (borrow_threshold_ratio, max_borrow_fraction, smoothing_alpha, min_effective_delta) require tuning.
-  - Example (with catch‑all):
-    - Trackers:
-      - A (specific): base 4 MiB/s, currently using 1 MiB/s → 3 MiB/s unused.
-      - B (specific): base 2 MiB/s, wants ~3 MiB/s (near/over cap), priority 10.
-      - Default (catch‑all): unlimited (‑1). Torrents mapped here remain uncapped and do not participate in borrowing.
-    - Pool = 3 MiB/s from A (its leftover). With borrow_threshold_ratio=0.9 and max_borrow_fraction=0.5:
-      - Only B is eligible to borrow (default is unlimited, excluded from borrowing logic).
-      - B’s share ≈ min(pool, 0.5×base_B) = min(3.0, 1.0) = 1.0 MiB/s.
-      - Effective caps: B = 2.0 + 1.0 = 3.0 MiB/s. A remains at 4 MiB/s base. Default stays unlimited (uncapped per‑torrent).
-      - Smoothing tempers sudden swings; tiny changes (under the delta gate) are ignored so limits don’t flap.
-
-Soft in 30 seconds (plain‑English)
-----------------------------------
-
-- Think of each tracker as a tap with a labelled flow (its base cap).
-- If a tap isn’t using all its flow, the leftover goes to a shared bucket.
-- Busy taps can borrow from that bucket to pour faster for a while.
-- Priorities decide who gets more from the bucket when several taps are busy.
-- Safety rails: no tap can borrow too much, and flows change gradually (not jerky).
-
-Three quick scenarios (no math)
---------------------------------
-
-- One tracker quiet, one busy: the busy tracker temporarily gets a boost; when the quiet tracker wakes up, the boost shrinks back.
-- Two busy trackers, different priorities: both get a boost, the higher‑priority one gets a larger share of the boost.
-- All trackers busy: there’s no leftover to borrow, so everyone runs at (about) their base caps; soft behaves like weighted/equal here.
-
-When to enable soft
--------------------
-
-- You see unused bandwidth on some trackers while others are starved.
-- You want a simple “borrow leftovers, but safely” behavior.
-- You care that important trackers get first dibs (set priorities).
-
-Safety defaults (good starting values)
--------------------------------------
-
-- borrow_threshold_ratio: 0.9 (only trackers using ≳90% of base cap try to borrow)
-- max_borrow_fraction: 0.5 (no tracker can borrow more than half its own cap)
-- smoothing_alpha: 0.4 (caps change smoothly)
-- min_effective_delta: 0.1 (ignore tiny changes)
-
-Quick guidance
---------------
-
-- Start with `equal` for initial rollout and safety.
-- If some torrents need more than others within the same tracker, try `weighted`.
-- If you have multiple trackers and often leave bandwidth on the table, use `soft` to borrow unused capacity safely (tune the knobs).
-- Use `/preview/next-cycle` before switching strategies or changing knobs; increase `rollout_percentage` gradually.
+For detailed examples, plain‑English explanations, safe defaults, and tuning tips, see: [STRATEGIES.md](STRATEGIES.md)
 
 ### Gradual Deployment Process
 
