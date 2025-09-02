@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Qguardarr",
     description="qBittorrent per-tracker upload speed limiter",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -153,7 +153,7 @@ async def health_check() -> Dict[str, Any]:
     health_data = {
         "status": app_state.get("health_status", "unknown"),
         "uptime_seconds": round(uptime, 1),
-        "version": "0.1.0",
+        "version": "0.2.0",
         "last_cycle_time": app_state.get("last_cycle_time"),
         "last_cycle_duration": app_state.get("last_cycle_duration"),
     }
@@ -322,6 +322,67 @@ async def update_rollout_percentage(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/preview/next-cycle")
+async def preview_next_cycle():
+    """Preview proposed tracker caps and torrent-level changes without applying"""
+    allocation_engine = app_state.get("allocation_engine")
+    if not allocation_engine:
+        raise HTTPException(status_code=503, detail="Service not ready")
+
+    # If the engine provides a preview method, use it directly
+    preview_method = getattr(allocation_engine, "preview_next_cycle", None)
+    if callable(preview_method):
+        try:
+            return await preview_method()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # Fallback: minimal placeholder if not implemented
+    return {
+        "status": "unimplemented",
+        "message": "Engine does not implement preview_next_cycle",
+    }
+
+
+@app.post("/smoothing/reset")
+async def reset_smoothing(request: Request):
+    """Reset Phase 3 smoothing state for a tracker or all."""
+    allocation_engine = app_state.get("allocation_engine")
+    if not allocation_engine:
+        raise HTTPException(status_code=503, detail="Service not ready")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    tracker_id = body.get("tracker_id")
+    reset_all = bool(body.get("all"))
+
+    try:
+        cfg = app_state.get("config")
+        strategy = cfg.global_settings.allocation_strategy if cfg else "equal"
+        if reset_all:
+            cleared = allocation_engine.reset_smoothing(None)
+            trackers = "all"
+        else:
+            cleared = allocation_engine.reset_smoothing(tracker_id)
+            trackers = tracker_id or ""
+
+        resp = {
+            "status": "ok",
+            "cleared_count": cleared,
+            "tracker": trackers,
+            "strategy": strategy,
+            "timestamp": time.time(),
+        }
+        if strategy != "soft":
+            resp["message"] = "Strategy is not 'soft'; smoothing state may be unused."
+        return resp
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/config")
 async def get_config():
     """Get current configuration (sanitized)"""
@@ -345,14 +406,17 @@ async def root():
     """Root endpoint"""
     return {
         "name": "Qguardarr",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "description": "qBittorrent per-tracker upload speed limiter",
         "status": app_state.get("health_status", "unknown"),
         "endpoints": {
             "health": "/health",
             "stats": "/stats",
+            "stats_trackers": "/stats/trackers",
             "webhook": "/webhook",
             "config": "/config",
+            "preview_next_cycle": "/preview/next-cycle",
+            "smoothing_reset": "/smoothing/reset",
         },
     }
 

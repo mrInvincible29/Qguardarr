@@ -275,6 +275,9 @@ class AllocationEngine:
             "score_distribution": {"high": 0, "medium": 0, "low": 0, "ignored": 0},
         }
 
+        # Phase 3 state: track last effective caps for smoothing
+        self._last_effective_caps: Dict[str, float] = {}
+
     async def run_allocation_cycle(self):
         """Main allocation cycle - basic implementation for Phase 1"""
         start_time = time.time()
@@ -306,6 +309,8 @@ class AllocationEngine:
                 )
             if strategy == "weighted":
                 new_limits = self._calculate_limits_phase2(torrents_for_calc)
+            elif strategy == "soft":
+                new_limits = self._calculate_limits_phase3(torrents_for_calc)
             else:
                 new_limits = self._calculate_limits_phase1(torrents_for_calc)
 
@@ -680,6 +685,225 @@ class AllocationEngine:
         stats["rollout_percentage"] = self.gradual_rollout.rollout_percentage
         return stats
 
+    # ------------------------- Phase 3 allocator -------------------------
+    def _calculate_limits_phase3(self, torrents: List[TorrentInfo]) -> Dict[str, int]:
+        """
+        Phase 3: Soft limits with borrowing across trackers and priority weighting.
+
+        Algorithm summary per plan:
+          - Compute per-tracker base caps (from config) and current usage (sum upspeed).
+          - Create global unused pool: sum(max(0, base_cap - usage)).
+          - For trackers near/over cap (usage >= base_cap * borrow_threshold_ratio),
+            compute need_i and allocate share from pool weighted by tracker priority * need.
+          - Apply per-tracker max borrow fraction cap.
+          - Effective cap e_i = usage_i + bonus_i (surrender unused capacity from underutilized trackers).
+          - Apply EMA smoothing and min delta gating to avoid oscillation.
+          - Distribute e_i within tracker using Phase 2 proportional splitter and bounds.
+        """
+        new_limits: Dict[str, int] = {}
+
+        # Group torrents by tracker
+        tracker_groups: Dict[str, List[TorrentInfo]] = {}
+        for t in torrents:
+            tracker_id = self.tracker_matcher.match_tracker(t.tracker)
+            tracker_groups.setdefault(tracker_id, []).append(t)
+
+        # Collect per-tracker stats
+        base_caps: Dict[str, int] = {}
+        usage: Dict[str, float] = {}
+        priority: Dict[str, int] = {}
+        unlimited_trackers: Set[str] = set()
+
+        for tracker_id, group in tracker_groups.items():
+            cfg = self.tracker_matcher.get_tracker_config(tracker_id)
+            if not cfg:
+                continue
+            base_caps[tracker_id] = cfg.max_upload_speed
+            priority[tracker_id] = getattr(cfg, "priority", 1)
+            usage[tracker_id] = float(sum(max(tt.upspeed, 0) for tt in group))
+            if cfg.max_upload_speed <= 0:
+                unlimited_trackers.add(tracker_id)
+
+        # Early handle unlimited trackers: set to unlimited and skip from pool calcs
+        for tracker_id in unlimited_trackers:
+            for t in tracker_groups.get(tracker_id, []):
+                new_limits[t.hash] = -1
+
+        # Compute global pool and needs for limited trackers
+        borrow_threshold = self.config.global_settings.borrow_threshold_ratio
+        max_borrow_frac = self.config.global_settings.max_borrow_fraction
+        alpha = self.config.global_settings.smoothing_alpha
+        min_delta = self.config.global_settings.min_effective_delta
+
+        pool = 0.0
+        for tid, cap in base_caps.items():
+            if tid in unlimited_trackers or cap <= 0:
+                continue
+            u = usage.get(tid, 0.0)
+            pool += max(0.0, cap - u)
+
+        # Compute needs and weights
+        need: Dict[str, float] = {}
+        weight: Dict[str, float] = {}
+        weight_sum = 0.0
+        for tid, cap in base_caps.items():
+            if tid in unlimited_trackers or cap <= 0:
+                continue
+            u = usage.get(tid, 0.0)
+            n = max(0.0, u - (cap * borrow_threshold))
+            need[tid] = n
+            w = (priority.get(tid, 1) * n) if n > 0 else 0.0
+            weight[tid] = w
+            weight_sum += w
+
+        # Allocate bonuses
+        bonus: Dict[str, float] = {tid: 0.0 for tid in base_caps.keys()}
+        for tid, cap in base_caps.items():
+            if tid in unlimited_trackers or cap <= 0:
+                continue
+            if weight_sum > 0 and pool > 0 and weight.get(tid, 0.0) > 0:
+                share = pool * (weight[tid] / weight_sum)
+            else:
+                share = 0.0
+            cap_limit = cap * max_borrow_frac
+            bonus[tid] = min(share, cap_limit)
+
+        # Compute smoothed effective caps: e_i = usage + bonus, then EMA
+        eff_caps: Dict[str, int] = {}
+        for tid, cap in base_caps.items():
+            if tid in unlimited_trackers or cap <= 0:
+                continue
+            u = usage.get(tid, 0.0)
+            # Effective cap is base cap plus borrowed bonus (capped above),
+            # not usage-based, to respect max borrow fraction against base.
+            computed = float(cap) + bonus.get(tid, 0.0)
+            prev = self._last_effective_caps.get(tid)
+            if prev is None:
+                smoothed = computed
+            else:
+                smoothed = alpha * computed + (1.0 - alpha) * prev
+                # Min relative change gating
+                denom = max(prev, 1.0)
+                if abs(smoothed - prev) / denom < min_delta:
+                    smoothed = prev
+            eff_val = int(round(smoothed))
+            eff_caps[tid] = eff_val
+            self._last_effective_caps[tid] = smoothed
+
+        # Distribute within each tracker up to eff cap (or unlimited)
+        for tid, group in tracker_groups.items():
+            if tid in unlimited_trackers:
+                for t in group:
+                    new_limits[t.hash] = -1
+                continue
+
+            cap = eff_caps.get(tid, base_caps.get(tid, 0))
+            if cap <= 0:
+                for t in group:
+                    new_limits[t.hash] = -1
+                continue
+
+            if len(group) == 1:
+                new_limits[group[0].hash] = int(cap)
+                continue
+
+            # Proportional distribution with bounds (reuse Phase 2 logic inline)
+            scores: Dict[str, float] = {}
+            for t in group:
+                peer_score = min(max(t.num_peers, 0) / 20.0, 1.0)
+                speed_score = min(max(t.upspeed, 0) / 1048576.0, 1.0)
+                scores[t.hash] = 0.6 * peer_score + 0.4 * speed_score
+
+            total_score = sum(scores.values())
+            min_limit = 10240  # 10KB/s
+            max_fraction = 0.6
+
+            allocations: Dict[str, float] = {}
+            if total_score <= 0:
+                for t in group:
+                    allocations[t.hash] = cap / float(len(group))
+            else:
+                for t in group:
+                    allocations[t.hash] = cap * (scores[t.hash] / total_score)
+
+            capped: Dict[str, float] = {}
+            max_cap = cap * max_fraction
+            for h, alloc in allocations.items():
+                capped[h] = max(min_limit, min(alloc, max_cap))
+
+            total_alloc = sum(capped.values())
+            if total_alloc < cap:
+                remaining = cap - total_alloc
+                headroom = {h: max(0.0, max_cap - capped[h]) for h in capped}
+                total_headroom = sum(headroom.values())
+                if total_headroom > 0 and remaining > 0:
+                    for h in capped:
+                        share = (
+                            remaining * (headroom[h] / total_headroom)
+                            if total_headroom > 0
+                            else 0
+                        )
+                        capped[h] = min(max_cap, capped[h] + share)
+            elif total_alloc > cap:
+                reduce_by = total_alloc - cap
+                reducible = {h: max(0.0, capped[h] - min_limit) for h in capped}
+                total_reducible = sum(reducible.values())
+                if total_reducible > 0 and reduce_by > 0:
+                    for h in capped:
+                        cut = (
+                            reduce_by * (reducible[h] / total_reducible)
+                            if total_reducible > 0
+                            else 0
+                        )
+                        capped[h] = max(min_limit, capped[h] - cut)
+
+            # Finalize ints and small rounding correction
+            max_int_cap = int(max_cap)
+            for h, alloc in capped.items():
+                v = int(round(alloc))
+                if v < min_limit:
+                    v = min_limit
+                if v > max_int_cap:
+                    v = max_int_cap
+                new_limits[h] = v
+
+            current_sum = sum(new_limits[h] for h in [t.hash for t in group])
+            delta = int(cap) - current_sum
+            if delta != 0:
+                if delta > 0:
+                    candidates = sorted(
+                        [t.hash for t in group],
+                        key=lambda x: (int(round(max_cap)) - new_limits[x]),
+                        reverse=True,
+                    )
+                    for h in candidates:
+                        head = int(max(0, round(max_cap) - new_limits[h]))
+                        if head <= 0:
+                            continue
+                        add = min(delta, head)
+                        new_limits[h] += add
+                        delta -= add
+                        if delta == 0:
+                            break
+                else:
+                    need = -delta
+                    candidates = sorted(
+                        [t.hash for t in group],
+                        key=lambda x: (new_limits[x] - min_limit),
+                        reverse=True,
+                    )
+                    for h in candidates:
+                        room = int(max(0, new_limits[h] - min_limit))
+                        if room <= 0:
+                            continue
+                        cut = min(need, room)
+                        new_limits[h] -= cut
+                        need -= cut
+                        if need == 0:
+                            break
+
+        return new_limits
+
     def get_detailed_stats(self) -> Dict[str, Any]:
         """Get detailed statistics"""
         stats = self.get_stats()
@@ -695,7 +919,359 @@ class AllocationEngine:
         cache_size_mb = (self.cache.used_count * 200) / (1024 * 1024)
         stats["estimated_memory_mb"] = round(cache_size_mb, 2)
 
+        # Strategy for visibility
+        stats["strategy"] = getattr(
+            self.config.global_settings, "allocation_strategy", "equal"
+        )
+
         return stats
+
+    async def preview_next_cycle(self) -> Dict[str, Any]:
+        """Compute a preview of the next allocation cycle without applying changes."""
+        # Collect torrents similarly to run_allocation_cycle but do not mutate state
+        active_torrents = await self._get_active_torrents()
+        managed_torrents = self._filter_torrents_for_rollout(active_torrents)
+
+        strategy = getattr(self.config.global_settings, "allocation_strategy", "equal")
+        torrents_for_calc = managed_torrents
+        if strategy == "weighted":
+            torrents_for_calc = self.select_torrents_for_management(managed_torrents)
+
+        tracker_preview: Dict[str, Dict[str, int]] = {}
+
+        if strategy == "soft":
+            new_limits, tracker_preview = self._calculate_phase3_preview(
+                torrents_for_calc
+            )
+        elif strategy == "weighted":
+            new_limits = self._calculate_limits_phase2(torrents_for_calc)
+            # Base caps only for preview
+            for cfg in self.tracker_matcher.get_all_tracker_configs():
+                tracker_preview[cfg.id] = {
+                    "base_cap": cfg.max_upload_speed,
+                    "effective_cap": cfg.max_upload_speed,
+                    "borrowed": 0,
+                }
+        else:
+            new_limits = self._calculate_limits_phase1(torrents_for_calc)
+            for cfg in self.tracker_matcher.get_all_tracker_configs():
+                tracker_preview[cfg.id] = {
+                    "base_cap": cfg.max_upload_speed,
+                    "effective_cap": cfg.max_upload_speed,
+                    "borrowed": 0,
+                }
+
+        # Compute proposed changes without applying
+        proposed: Dict[str, int] = {}
+        threshold = self.config.global_settings.differential_threshold
+        for h, new_limit in new_limits.items():
+            current_limit = self.cache.get_current_limit(h)
+            # Always propose for unknown cache entries
+            if current_limit is None or self.qbit_client.needs_update(
+                current_limit, new_limit, threshold
+            ):
+                proposed[h] = new_limit
+
+        # Build a compact UI-friendly summary
+        # Tracker list with human-readable mbps values
+        def fmt_speed(bps: Optional[float]) -> Optional[str]:
+            if bps is None:
+                return None
+            if bps < 0:
+                return "unlimited"
+            try:
+                val = float(bps)
+            except Exception:
+                return None
+            if val < 1024:
+                return f"{int(val)} B/s"
+            if val < 1024 * 1024:
+                return f"{val / 1024:.1f} KiB/s"
+            return f"{val / 1048576:.2f} MiB/s"
+
+        tracker_summary = []
+        for tid, tinfo in tracker_preview.items():
+            base = tinfo.get("base_cap", 0)
+            eff = tinfo.get("effective_cap", base)
+            borrowed = tinfo.get("borrowed", 0)
+            tracker_summary.append(
+                {
+                    "id": tid,
+                    "base_cap_mbps": (
+                        round(base / (1024 * 1024), 2) if base > 0 else None
+                    ),
+                    "base_cap_h": fmt_speed(base),
+                    "effective_cap_mbps": (
+                        round(eff / (1024 * 1024), 2)
+                        if isinstance(eff, (int, float)) and eff > 0
+                        else None
+                    ),
+                    "effective_cap_h": fmt_speed(
+                        eff if isinstance(eff, (int, float)) else None
+                    ),
+                    "borrowed_mbps": (
+                        round(borrowed / (1024 * 1024), 2) if borrowed > 0 else 0.0
+                    ),
+                    "borrowed_h": fmt_speed(borrowed),
+                }
+            )
+
+        # Top N changes by absolute limit (since delta may be unavailable)
+        top_changes = []
+        for h, v in list(proposed.items())[:10]:
+            current = self.cache.get_current_limit(h)
+            delta_kib = None
+            if current is not None and current > 0 and v > 0:
+                delta_kib = int((v - current) / 1024)
+            top_changes.append(
+                {
+                    "hash": h,
+                    "new_limit_kib": int(v / 1024) if v > 0 else -1,
+                    "delta_kib": delta_kib,
+                    "new_limit_h": fmt_speed(v if v > 0 else -1),
+                    "delta_h": (
+                        f"{delta_kib:.0f} KiB/s" if delta_kib is not None else None
+                    ),
+                }
+            )
+
+        return {
+            "strategy": strategy,
+            "torrents_considered": len(torrents_for_calc),
+            "proposed_count": len(proposed),
+            "proposed_changes": proposed,
+            "trackers": tracker_preview,
+            "summary": {"trackers": tracker_summary, "top_changes": top_changes},
+        }
+
+    def _calculate_phase3_preview(
+        self, torrents: List[TorrentInfo]
+    ) -> Tuple[Dict[str, int], Dict[str, Dict[str, int]]]:
+        """Phase 3 calculation for preview: does not mutate smoothing state.
+
+        Returns:
+            (new_limits, tracker_preview) where tracker_preview maps tracker_id to
+            {"base_cap", "effective_cap", "borrowed"} in bytes/sec.
+        """
+        new_limits: Dict[str, int] = {}
+        tracker_preview: Dict[str, Dict[str, int]] = {}
+
+        # Group torrents by tracker
+        tracker_groups: Dict[str, List[TorrentInfo]] = {}
+        for t in torrents:
+            tid = self.tracker_matcher.match_tracker(t.tracker)
+            tracker_groups.setdefault(tid, []).append(t)
+
+        base_caps: Dict[str, int] = {}
+        usage: Dict[str, float] = {}
+        priority: Dict[str, int] = {}
+        unlimited: Set[str] = set()
+
+        for tid, group in tracker_groups.items():
+            cfg = self.tracker_matcher.get_tracker_config(tid)
+            if not cfg:
+                continue
+            base_caps[tid] = cfg.max_upload_speed
+            priority[tid] = getattr(cfg, "priority", 1)
+            usage[tid] = float(sum(max(tt.upspeed, 0) for tt in group))
+            if cfg.max_upload_speed <= 0:
+                unlimited.add(tid)
+
+        # Phase 3 params
+        borrow_threshold = self.config.global_settings.borrow_threshold_ratio
+        max_borrow_frac = self.config.global_settings.max_borrow_fraction
+        alpha = self.config.global_settings.smoothing_alpha
+        min_delta = self.config.global_settings.min_effective_delta
+
+        # Pool
+        pool = 0.0
+        for tid, cap in base_caps.items():
+            if tid in unlimited or cap <= 0:
+                continue
+            pool += max(0.0, cap - usage.get(tid, 0.0))
+
+        need: Dict[str, float] = {}
+        weight: Dict[str, float] = {}
+        weight_sum = 0.0
+        for tid, cap in base_caps.items():
+            if tid in unlimited or cap <= 0:
+                continue
+            u = usage.get(tid, 0.0)
+            n = max(0.0, u - (cap * borrow_threshold))
+            need[tid] = n
+            w = (priority.get(tid, 1) * n) if n > 0 else 0.0
+            weight[tid] = w
+            weight_sum += w
+
+        bonus: Dict[str, float] = {tid: 0.0 for tid in base_caps.keys()}
+        for tid, cap in base_caps.items():
+            if tid in unlimited or cap <= 0:
+                continue
+            if weight_sum > 0 and pool > 0 and weight.get(tid, 0.0) > 0:
+                share = pool * (weight[tid] / weight_sum)
+            else:
+                share = 0.0
+            bonus[tid] = min(share, cap * max_borrow_frac)
+
+        # Effective caps with smoothing but no state mutation
+        eff_caps: Dict[str, int] = {}
+        for tid, cap in base_caps.items():
+            if tid in unlimited or cap <= 0:
+                continue
+            computed = float(cap) + bonus.get(tid, 0.0)
+            prev = self._last_effective_caps.get(tid)
+            if prev is None:
+                smoothed = computed
+            else:
+                smoothed = alpha * computed + (1.0 - alpha) * prev
+                denom = max(prev, 1.0)
+                if abs(smoothed - prev) / denom < min_delta:
+                    smoothed = prev
+            eff_caps[tid] = int(round(smoothed))
+
+        # Build tracker preview map including unlimited trackers
+        for tid in tracker_groups.keys():
+            base_cap = base_caps.get(tid, 0)
+            if tid in unlimited or base_cap <= 0:
+                tracker_preview[tid] = {
+                    "base_cap": base_cap,
+                    "effective_cap": -1,
+                    "borrowed": 0,
+                }
+            else:
+                eff = eff_caps.get(tid, base_cap)
+                tracker_preview[tid] = {
+                    "base_cap": base_cap,
+                    "effective_cap": eff,
+                    "borrowed": max(0, eff - base_cap),
+                }
+
+        # Distribute within each tracker
+        for tid, group in tracker_groups.items():
+            if tid in unlimited:
+                for t in group:
+                    new_limits[t.hash] = -1
+                continue
+
+            cap = eff_caps.get(tid, base_caps.get(tid, 0))
+            if cap <= 0:
+                for t in group:
+                    new_limits[t.hash] = -1
+                continue
+
+            if len(group) == 1:
+                new_limits[group[0].hash] = int(cap)
+                continue
+
+            # Proportional distribution (same as Phase 2)
+            scores: Dict[str, float] = {}
+            for t in group:
+                peer_score = min(max(t.num_peers, 0) / 20.0, 1.0)
+                speed_score = min(max(t.upspeed, 0) / 1048576.0, 1.0)
+                scores[t.hash] = 0.6 * peer_score + 0.4 * speed_score
+
+            total_score = sum(scores.values())
+            min_limit = 10240
+            max_fraction = 0.6
+
+            allocations: Dict[str, float] = {}
+            if total_score <= 0:
+                for t in group:
+                    allocations[t.hash] = cap / float(len(group))
+            else:
+                for t in group:
+                    allocations[t.hash] = cap * (scores[t.hash] / total_score)
+
+            capped: Dict[str, float] = {}
+            max_cap = cap * max_fraction
+            for h, alloc in allocations.items():
+                capped[h] = max(min_limit, min(alloc, max_cap))
+
+            total_alloc = sum(capped.values())
+            if total_alloc < cap:
+                remaining = cap - total_alloc
+                headroom = {h: max(0.0, max_cap - capped[h]) for h in capped}
+                total_headroom = sum(headroom.values())
+                if total_headroom > 0 and remaining > 0:
+                    for h in capped:
+                        share = (
+                            remaining * (headroom[h] / total_headroom)
+                            if total_headroom > 0
+                            else 0
+                        )
+                        capped[h] = min(max_cap, capped[h] + share)
+            elif total_alloc > cap:
+                reduce_by = total_alloc - cap
+                reducible = {h: max(0.0, capped[h] - min_limit) for h in capped}
+                total_reducible = sum(reducible.values())
+                if total_reducible > 0 and reduce_by > 0:
+                    for h in capped:
+                        cut = (
+                            reduce_by * (reducible[h] / total_reducible)
+                            if total_reducible > 0
+                            else 0
+                        )
+                        capped[h] = max(min_limit, capped[h] - cut)
+
+            # Int finalize and rounding fix
+            max_int_cap = int(max_cap)
+            for h, alloc in capped.items():
+                v = int(round(alloc))
+                if v < min_limit:
+                    v = min_limit
+                if v > max_int_cap:
+                    v = max_int_cap
+                new_limits[h] = v
+
+            current_sum = sum(new_limits[h] for h in [t.hash for t in group])
+            delta = int(cap) - current_sum
+            if delta != 0:
+                if delta > 0:
+                    candidates = sorted(
+                        [t.hash for t in group],
+                        key=lambda x: (int(round(max_cap)) - new_limits[x]),
+                        reverse=True,
+                    )
+                    for h in candidates:
+                        head = int(max(0, round(max_cap) - new_limits[h]))
+                        if head <= 0:
+                            continue
+                        add = min(delta, head)
+                        new_limits[h] += add
+                        delta -= add
+                        if delta == 0:
+                            break
+                else:
+                    need = -delta
+                    candidates = sorted(
+                        [t.hash for t in group],
+                        key=lambda x: (new_limits[x] - min_limit),
+                        reverse=True,
+                    )
+                    for h in candidates:
+                        room = int(max(0, new_limits[h] - min_limit))
+                        if room <= 0:
+                            continue
+                        cut = min(need, room)
+                        new_limits[h] -= cut
+                        need -= cut
+                        if need == 0:
+                            break
+
+        return new_limits, tracker_preview
+
+    def reset_smoothing(self, tracker_id: Optional[str] = None) -> int:
+        """Reset smoothing state either for a specific tracker or all.
+
+        Returns number of cleared entries.
+        """
+        if tracker_id:
+            return (
+                1 if self._last_effective_caps.pop(tracker_id, None) is not None else 0
+            )
+        count = len(self._last_effective_caps)
+        self._last_effective_caps.clear()
+        return count
 
     # ------------------------- Phase 2 helpers -------------------------
     def select_torrents_for_management(self, all_torrents: List[Any]) -> List[Any]:
@@ -754,6 +1330,10 @@ class AllocationEngine:
                 "priority": tracker_config.priority,
                 "active_torrents": 0,
                 "current_usage_mbps": 0.0,
+                # Phase 3 additions
+                "effective_cap_mbps": None,
+                "borrowed_mbps": 0.0,
+                "efficiency_percent": 0.0,
             }
 
         # Add current usage data
@@ -765,5 +1345,33 @@ class AllocationEngine:
             tracker_stats[tracker_id]["current_usage_mbps"] = round(
                 total_usage / (1024 * 1024), 2
             )
+
+            # Derive effective cap if available (Phase 3 smoothing state)
+            configured_limit_bps = self.tracker_matcher.get_tracker_config(tracker_id).max_upload_speed if self.tracker_matcher.get_tracker_config(tracker_id) else 0  # type: ignore[union-attr]
+            if configured_limit_bps <= 0:
+                # Unlimited trackers: leave effective as None for now
+                tracker_stats[tracker_id]["effective_cap_mbps"] = None
+                tracker_stats[tracker_id]["borrowed_mbps"] = 0.0
+                tracker_stats[tracker_id]["efficiency_percent"] = 0.0
+                continue
+
+            eff_bps = self._last_effective_caps.get(tracker_id)
+            if eff_bps is None:
+                eff_bps = float(configured_limit_bps)
+
+            eff_mbps = round(eff_bps / (1024 * 1024), 2)
+            base_mbps = round(configured_limit_bps / (1024 * 1024), 2)
+            borrowed = max(0.0, round(eff_mbps - base_mbps, 2))
+            tracker_stats[tracker_id]["effective_cap_mbps"] = eff_mbps
+            tracker_stats[tracker_id]["borrowed_mbps"] = borrowed
+
+            # Efficiency: usage / effective
+            if eff_bps > 0:
+                eff_pct = (
+                    tracker_stats[tracker_id]["current_usage_mbps"] / eff_mbps
+                ) * 100.0
+                tracker_stats[tracker_id]["efficiency_percent"] = round(
+                    max(0.0, min(eff_pct, 100.0)), 1
+                )
 
         return tracker_stats

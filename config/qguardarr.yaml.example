@@ -17,11 +17,19 @@ global:
   host: "0.0.0.0"
   port: 8089
 
-  # Phase 2 (optional): Smart scoring + weighted allocation within trackers
-  # Set to 'weighted' to enable ActivityScorer + proportional allocation
-  allocation_strategy: "equal"  # 'equal' (default) or 'weighted'
+  # Allocation strategy
+  # - 'equal'    : equal split within tracker (Phase 1)
+  # - 'weighted' : weighted split by peers/speed within tracker (Phase 2)
+  # - 'soft'     : soft per-tracker limits with borrowing + smoothing (Phase 3)
+  allocation_strategy: "equal"
   # Cap the actively managed set size for performance; others remain untouched
   max_managed_torrents: 1000
+
+  # Phase 3 (soft limits) knobs — used when allocation_strategy: 'soft'
+  borrow_threshold_ratio: 0.9    # qualify for borrowing when usage >= cap * ratio
+  max_borrow_fraction: 0.5       # each tracker may borrow up to 50% of its base cap
+  smoothing_alpha: 0.4           # EMA alpha for effective cap smoothing
+  min_effective_delta: 0.1       # min relative change to update effective cap
 
 # qBittorrent Web UI connection
 qbittorrent:
@@ -92,3 +100,10 @@ logging:
 # - Enable allocation_strategy: 'weighted' to distribute per tracker based on activity
 # - Selection uses scoring to keep only top-N torrents under active management
 # - Per-torrent bounds (internal defaults): min 10KB/s, max 60% of tracker cap
+
+# Phase 3 Notes:
+# - Set allocation_strategy: 'soft' to enable borrowing across trackers.
+# - Unused capacity forms a pool; higher-priority trackers borrow more when near cap.
+# - Borrowing is capped by max_borrow_fraction of each tracker's base cap.
+# - Smoothing avoids oscillations; tune smoothing_alpha and min_effective_delta as needed.
+# - Use GET /preview/next-cycle to preview proposed changes safely before rollout.

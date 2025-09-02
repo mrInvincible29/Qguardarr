@@ -109,3 +109,45 @@ def test_unlimited_tracker_sets_unlimited(engine: AllocationEngine):
     torrents = [_t("h1", up_kib=100, peers=10)]
     limits = engine._calculate_limits_phase2(torrents)  # type: ignore[attr-defined]
     assert limits["h1"] == -1
+
+
+def test_weighted_reduce_with_reducible(engine: AllocationEngine):
+    # TrackerX cap is 6 MiB/s; one strong torrent plus many at floor should force reduce with reducible > 0
+    strong = _t("hs", up_kib=900, peers=50)
+    many = [_t(f"h{i}", up_kib=0, peers=0) for i in range(400)]
+    torrents = [strong] + many
+
+    limits = engine._calculate_limits_phase2(torrents)  # type: ignore[attr-defined]
+
+    cap = 6 * 1024 * 1024
+    # Strong torrent must receive less than the 60% cap due to accommodating floors
+    assert limits["hs"] < int(0.6 * cap)
+    # The many torrents stay at the 10 KiB/s floor
+    floors = [limits[h.hash] for h in many]
+    assert all(v == 10 * 1024 for v in floors)
+
+
+def test_weighted_rounding_correction_negative(engine: AllocationEngine):
+    # Force tracker cap to 1,000,001 and three equal torrents → rounding up sum > cap triggers reduce branch
+    engine.tracker_matcher.get_tracker_config.side_effect = lambda tracker_id: Mock(
+        id=tracker_id,
+        max_upload_speed=1_000_001,
+        priority=5,
+        name="TrackerX",
+    )
+    ts = [_t("r1", 100, 10), _t("r2", 100, 10), _t("r3", 100, 10)]
+    limits = engine._calculate_limits_phase2(ts)  # type: ignore[attr-defined]
+    assert sum(limits.values()) == 1_000_001
+
+
+def test_weighted_rounding_correction_positive(engine: AllocationEngine):
+    # Force tracker cap to 1,000,000 and three equal torrents → rounding down sum < cap triggers add branch
+    engine.tracker_matcher.get_tracker_config.side_effect = lambda tracker_id: Mock(
+        id=tracker_id,
+        max_upload_speed=1_000_000,
+        priority=5,
+        name="TrackerX",
+    )
+    ts = [_t("a", 100, 10), _t("b", 100, 10), _t("c", 100, 10)]
+    limits = engine._calculate_limits_phase2(ts)  # type: ignore[attr-defined]
+    assert sum(limits.values()) == 1_000_000

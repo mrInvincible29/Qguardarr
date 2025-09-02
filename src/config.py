@@ -56,18 +56,61 @@ class GlobalSettings(BaseModel):
     port: int = Field(default=8089, ge=1024, le=65535)
     # Phase 2 controls
     allocation_strategy: str = Field(
-        default="equal", description="Allocation strategy: 'equal' or 'weighted'"
+        default="equal",
+        description="Allocation strategy: 'equal', 'weighted', or 'soft'",
     )
     max_managed_torrents: int = Field(
         default=1000, ge=1, description="Maximum number of torrents to actively manage"
+    )
+    # Phase 3 controls (soft borrowing and smoothing)
+    borrow_threshold_ratio: float = Field(
+        default=0.9, description="Qualify for borrowing when usage >= cap * ratio"
+    )
+    max_borrow_fraction: float = Field(
+        default=0.5, description="Max fraction of base cap a tracker may borrow"
+    )
+    smoothing_alpha: float = Field(
+        default=0.4, description="EMA alpha for smoothing effective tracker caps"
+    )
+    min_effective_delta: float = Field(
+        default=0.1,
+        description="Min relative change in effective cap to apply update",
     )
 
     @field_validator("allocation_strategy")
     @classmethod
     def validate_allocation_strategy(cls, v: str) -> str:
-        allowed = {"equal", "weighted"}
+        allowed = {"equal", "weighted", "soft"}
         if v not in allowed:
             raise ValueError(f"allocation_strategy must be one of {allowed}")
+        return v
+
+    @field_validator("borrow_threshold_ratio")
+    @classmethod
+    def validate_borrow_threshold_ratio(cls, v: float) -> float:
+        if not (0.5 <= v <= 1.0):
+            raise ValueError("borrow_threshold_ratio must be between 0.5 and 1.0")
+        return v
+
+    @field_validator("max_borrow_fraction")
+    @classmethod
+    def validate_max_borrow_fraction(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("max_borrow_fraction must be between 0.0 and 1.0")
+        return v
+
+    @field_validator("smoothing_alpha")
+    @classmethod
+    def validate_smoothing_alpha(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("smoothing_alpha must be between 0.0 and 1.0")
+        return v
+
+    @field_validator("min_effective_delta")
+    @classmethod
+    def validate_min_effective_delta(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("min_effective_delta must be between 0.0 and 1.0")
         return v
 
 
