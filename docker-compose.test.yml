@@ -1,0 +1,88 @@
+# Docker Compose for Integration Testing with qBittorrent
+version: '3.8'
+
+services:
+  qbittorrent-test:
+    image: qbittorrentofficial/qbittorrent-nox:latest
+    container_name: qbittorrent-test
+    environment:
+      - QBT_LEGAL_NOTICE=confirm
+      - QBT_VERSION=latest
+      - QBT_WEBUI_PORT=8080
+      - QBT_TORRENTING_PORT=6881
+      - TZ=UTC
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    volumes:
+      # Mount pre-configured qBittorrent config with adminadmin password
+      - ./test-data/qbit-config:/config
+      - downloads:/downloads
+      - torrents:/torrents
+    tmpfs:
+      - /tmp:exec,size=100M
+    restart: "no"  # Don't restart in test environment
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  qguardarr-test:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: qguardarr-test
+    depends_on:
+      qbittorrent-test:
+        condition: service_healthy
+    environment:
+      - QBIT_HOST=qbittorrent-test
+      - QBIT_PORT=8080
+      - QBIT_USERNAME=admin
+      - QBIT_PASSWORD=adminadmin
+      - CROSS_SEED_API_KEY=test-key
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./config:/app/config:ro
+      - qguardarr-data:/app/data
+      - qguardarr-logs:/app/logs
+      - ./scripts:/app/scripts:ro
+    restart: "no"  # Don't restart in test environment
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8089/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+
+  # Optional: Cross-seed mock server for testing
+  cross-seed-mock:
+    image: nginx:alpine
+    container_name: cross-seed-mock
+    ports:
+      - "2468:80"
+    volumes:
+      - ./test-data/nginx-mock.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: "no"  # Don't restart in test environment
+
+networks:
+  default:
+    name: qguardarr-test-network
+
+volumes:
+  qbit-config:
+    driver: local
+  downloads:
+    driver: local
+  torrents:
+    driver: local
+  qguardarr-data:
+    driver: local
+  qguardarr-logs:
+    driver: local

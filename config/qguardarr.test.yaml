@@ -1,0 +1,87 @@
+# Qguardarr Test Configuration
+global:
+  # Faster cycles for testing (minimum 60 seconds)
+  update_interval: 60  # 60 seconds instead of 5 minutes
+  active_torrent_threshold_kb: 1  # Track all torrents with >1KB/s
+  
+  # Performance
+  max_api_calls_per_cycle: 1000
+  differential_threshold: 0.1  # More sensitive for testing
+  
+  # Start with small rollout for safety
+  rollout_percentage: 100  # Full rollout for testing
+  
+  # Server settings
+  host: "0.0.0.0"
+  port: 8089
+
+# qBittorrent connection
+qbittorrent:
+  host: "qbittorrent-test"
+  port: 8080
+  username: "admin"
+  password: "adminpass123"
+  timeout: 30
+
+# Cross-seed integration (mock server)
+cross_seed:
+  enabled: true
+  url: "http://cross-seed-mock/api/webhook"
+  api_key: "test-key"
+  timeout: 15
+
+# Test tracker definitions with common public trackers
+trackers:
+  # Archive.org tracker
+  - id: "archive_org"
+    name: "Internet Archive"
+    pattern: ".*tracker\\.archive\\.org.*"
+    max_upload_speed: 5242880  # 5 MB/s
+    priority: 10
+    
+  # Ubuntu tracker
+  - id: "ubuntu"
+    name: "Ubuntu Tracker"
+    pattern: ".*torrent\\.ubuntu\\.com.*"
+    max_upload_speed: 3145728  # 3 MB/s
+    priority: 8
+    
+  # OpenTracker
+  - id: "opentrackr"
+    name: "OpenTracker"
+    pattern: ".*tracker\\.opentrackr\\.org.*"
+    max_upload_speed: 2097152  # 2 MB/s
+    priority: 6
+    
+  # OpenBittorrent
+  - id: "openbittorrent"
+    name: "OpenBittorrent"
+    pattern: ".*tracker\\.openbittorrent\\.com.*"
+    max_upload_speed: 2097152  # 2 MB/s
+    priority: 5
+    
+  # LibriVox (audiobooks)
+  - id: "librivox"
+    name: "LibriVox"
+    pattern: ".*librivox.*"
+    max_upload_speed: 1048576  # 1 MB/s
+    priority: 4
+    
+  # Default catch-all for any other trackers
+  - id: "default"
+    name: "Default Trackers"
+    pattern: ".*"  # Catch-all (must be last)
+    max_upload_speed: 1048576  # 1 MB/s
+    priority: 1
+
+# Rollback settings
+rollback:
+  database_path: "./data/rollback.db"
+  track_all_changes: true
+
+# Logging
+logging:
+  level: "DEBUG"  # More verbose for testing
+  file: "./logs/qguardarr-test.log"
+  max_size_mb: 10
+  backup_count: 3

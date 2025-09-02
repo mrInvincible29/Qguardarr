@@ -1,0 +1,83 @@
+# Qguardarr Configuration Example
+# Copy this file to qguardarr.yaml and customize for your setup
+
+global:
+  # Basic settings
+  update_interval: 300  # 5 minutes - how often to check and update limits
+  active_torrent_threshold_kb: 10  # Track torrents uploading >10KB/s
+  
+  # Performance tuning
+  max_api_calls_per_cycle: 500  # Limit API calls to prevent overload
+  differential_threshold: 0.2  # Only update limits with >20% change
+  
+  # Rollout safety - start with 10% for testing, increase gradually
+  rollout_percentage: 10  # Manage only 10% of torrents initially
+  
+  # Server settings
+  host: "0.0.0.0"
+  port: 8089
+
+# qBittorrent Web UI connection
+qbittorrent:
+  host: "localhost"  # qBittorrent host
+  port: 8080         # qBittorrent Web UI port
+  username: "admin"  # qBittorrent username
+  password: "${QBIT_PASSWORD}"  # Use environment variable for security
+  timeout: 30        # Connection timeout in seconds
+
+# Cross-seed integration (optional)
+cross_seed:
+  enabled: false  # Set to true to forward completion events
+  url: "http://localhost:2468/api/webhook"
+  api_key: "${CROSS_SEED_API_KEY}"  # Use environment variable
+  timeout: 15
+
+# Tracker definitions - customize for your trackers
+trackers:
+  # High priority private tracker
+  - id: "premium"
+    name: "Premium Private Tracker"
+    pattern: ".*premium-tracker\\.com.*"  # Regex pattern to match tracker URLs
+    max_upload_speed: 10485760  # 10 MB/s in bytes per second
+    priority: 10  # Highest priority (1-10)
+    
+  # Standard private tracker  
+  - id: "standard"  
+    name: "Standard Private Tracker"
+    pattern: ".*standard-tracker\\.org.*"
+    max_upload_speed: 5242880  # 5 MB/s
+    priority: 5
+    
+  # Public tracker with lower limits
+  - id: "public"
+    name: "Public Trackers"
+    pattern: ".*(nyaa|eztv|rarbg).*"
+    max_upload_speed: 1048576  # 1 MB/s
+    priority: 2
+    
+  # Catch-all for unknown trackers (MUST BE LAST)
+  - id: "default"
+    name: "All Others"
+    pattern: ".*"  # Matches everything - must be the last entry
+    max_upload_speed: 2097152  # 2 MB/s
+    priority: 1
+
+# Rollback system settings
+rollback:
+  database_path: "./data/rollback.db"  # SQLite database for tracking changes
+  track_all_changes: true  # Record all limit changes for rollback
+
+# Logging configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "./logs/qguardarr.log"
+  max_size_mb: 50  # Max log file size before rotation
+  backup_count: 5  # Number of backup log files to keep
+
+# Phase 1 Notes:
+# - This implements hard limits only (no soft limits/borrowing yet)
+# - Equal distribution within each tracker
+# - Start with rollout_percentage: 10 for safety
+# - Increase rollout_percentage gradually: 25, 50, 75, 100
+# - Monitor memory usage and performance
+# - Check logs for any errors or warnings

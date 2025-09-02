@@ -1,0 +1,72 @@
+[
+    {
+        "name": "Ubuntu 22.04.3 Desktop amd64",
+        "magnet": "magnet:?xt=urn:btih:a4b1e5e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1&dn=ubuntu-22.04.3-desktop-amd64.iso&tr=http://torrent.ubuntu.com:6969/announce&tr=https://torrent.ubuntu.com:443/announce",
+        "size_mb": 4800,
+        "tracker": "torrent.ubuntu.com",
+        "category": "linux-distro"
+    },
+    {
+        "name": "Internet Archive - Night of the Living Dead (1968)",
+        "magnet": "magnet:?xt=urn:btih:b2c3d4e5f6789a0b1c2d3e4f567890abcdef1234&dn=night_of_the_living_dead_1968&tr=http://tracker.archive.org:6969/announce&tr=udp://tracker.archive.org:6969/announce",
+        "size_mb": 600,
+        "tracker": "tracker.archive.org",
+        "category": "movies"
+    },
+    {
+        "name": "Internet Archive - The Art of Computer Programming Volume 1",
+        "magnet": "magnet:?xt=urn:btih:c3d4e5f6789a0b1c2d3e4f567890abcdef123456&dn=art_of_computer_programming_vol1&tr=http://tracker.archive.org:6969/announce",
+        "size_mb": 25,
+        "tracker": "tracker.archive.org", 
+        "category": "books"
+    },
+    {
+        "name": "Big Buck Bunny - Open Movie Project",
+        "magnet": "magnet:?xt=urn:btih:d4e5f6789a0b1c2d3e4f567890abcdef12345678&dn=big_buck_bunny_1080p_surround&tr=http://tracker.opentrackr.org:1337/announce&tr=udp://tracker.opentrackr.org:1337/announce",
+        "size_mb": 332,
+        "tracker": "tracker.opentrackr.org",
+        "category": "movies"
+    },
+    {
+        "name": "Sintel - Blender Open Movie Project",
+        "magnet": "magnet:?xt=urn:btih:e5f6789a0b1c2d3e4f567890abcdef123456789a&dn=sintel_1080p&tr=http://tracker.opentrackr.org:1337/announce",
+        "size_mb": 123,
+        "tracker": "tracker.opentrackr.org",
+        "category": "movies"
+    },
+    {
+        "name": "Ubuntu Server 22.04.3 LTS",
+        "magnet": "magnet:?xt=urn:btih:f6789a0b1c2d3e4f567890abcdef123456789ab1&dn=ubuntu-22.04.3-live-server-amd64.iso&tr=http://torrent.ubuntu.com:6969/announce",
+        "size_mb": 1450,
+        "tracker": "torrent.ubuntu.com",
+        "category": "linux-distro"
+    },
+    {
+        "name": "Internet Archive - Metropolis (1927)",
+        "magnet": "magnet:?xt=urn:btih:789a0b1c2d3e4f567890abcdef123456789ab12c3&dn=metropolis_1927&tr=http://tracker.archive.org:6969/announce",
+        "size_mb": 890,
+        "tracker": "tracker.archive.org",
+        "category": "movies"
+    },
+    {
+        "name": "Debian 12 netinst",
+        "magnet": "magnet:?xt=urn:btih:89a0b1c2d3e4f567890abcdef123456789ab12c3d&dn=debian-12.0.0-amd64-netinst.iso&tr=http://tracker.debian.org:6969/announce",
+        "size_mb": 650,
+        "tracker": "tracker.debian.org",
+        "category": "linux-distro"
+    },
+    {
+        "name": "Internet Archive - Project Gutenberg Collection",
+        "magnet": "magnet:?xt=urn:btih:9a0b1c2d3e4f567890abcdef123456789ab12c3d4&dn=gutenberg_collection_2023&tr=http://tracker.archive.org:6969/announce",
+        "size_mb": 45,
+        "tracker": "tracker.archive.org",
+        "category": "books"
+    },
+    {
+        "name": "Tears of Steel - Blender Open Movie Project",
+        "magnet": "magnet:?xt=urn:btih:a0b1c2d3e4f567890abcdef123456789ab12c3d4e&dn=tears_of_steel_1080p&tr=http://tracker.opentrackr.org:1337/announce",
+        "size_mb": 734,
+        "tracker": "tracker.opentrackr.org",
+        "category": "movies"
+    }
+]

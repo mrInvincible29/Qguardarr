@@ -1,0 +1,17 @@
+venv/
+__pycache__/
+.pytest_cache/
+htmlcov/
+*.pyc
+logs/*.log
+data/*.db
+.coverage
+*.egg-info/
+
+# Ignore generated qBittorrent test data except .conf files
+test-data/qbit-config/qBittorrent/**/*
+!test-data/qbit-config/qBittorrent/**/*.conf
+
+# Ignore test logs and DBs
+test-data/qguardarr-logs/*.log
+test-data/qguardarr-data/*.db

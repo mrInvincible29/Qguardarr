@@ -1,0 +1,46 @@
+# Development dependencies for Qguardarr
+# Install with: pip install -r requirements-dev.txt
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+
+# Code formatting
+black>=23.9.0
+isort>=5.12.0
+
+# Linting
+flake8>=6.0.0
+flake8-docstrings>=1.7.0
+flake8-bugbear>=23.9.16
+flake8-comprehensions>=3.14.0
+
+# Type checking
+mypy>=1.6.0
+types-PyYAML>=6.0.12
+types-requests>=2.31.0
+
+# Security
+bandit>=1.7.5
+
+# Git hooks
+pre-commit>=3.5.0
+
+# Documentation (optional)
+mkdocs>=1.5.0
+mkdocs-material>=9.4.0
+
+# Development utilities
+ipython>=8.16.0
+ipdb>=0.13.13
+
+# HTTP testing
+httpx>=0.25.0  # Also used in main app
+
+# Load testing (for performance testing)
+locust>=2.17.0
+
+# Database utilities for development
+sqlite-utils>=3.35.0

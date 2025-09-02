@@ -1,0 +1,27 @@
+[flake8]
+max-line-length = 88
+select = E,W,F
+ignore = 
+    # Black handles these
+    E203,  # whitespace before ':'
+    E501,  # line too long (handled by black)
+    W503,  # line break before binary operator
+    # Allow some flexibility
+    E402,  # module level import not at top of file
+exclude = 
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    .mypy_cache,
+    .pytest_cache,
+    build,
+    dist,
+    *.egg-info
+per-file-ignores =
+    # Tests can be more flexible
+    tests/*:E501,F401,F811
+    # Config files can have longer lines
+    config/*:E501
+    # Init files can have unused imports
+    __init__.py:F401
