@@ -2,7 +2,6 @@ name: Docker Images
 
 on:
   push:
-    branches: [ main ]
     tags: [ 'v*.*.*' ]
   workflow_dispatch:
 
@@ -29,12 +28,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set image name (lowercase)
+        id: vars
+        run: |
+          echo "image=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ghcr.io/${{ github.repository }}
+          images: ${{ steps.vars.outputs.image }}
           tags: |
             type=sha
             type=ref,event=branch

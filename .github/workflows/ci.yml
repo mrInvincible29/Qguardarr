@@ -73,11 +73,13 @@ jobs:
       - name: Prepare test config
         run: cp config/qguardarr.test.yaml config/qguardarr.yaml
 
-      - name: Compose up (services)
-        uses: docker/compose-action@v2
-        with:
-          compose-file: docker-compose.test.yml
-          up: -d --build
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v1
+
+      - name: Compose up (pull, build, up)
+        run: |
+          docker compose -f docker-compose.test.yml pull || true
+          docker compose -f docker-compose.test.yml up -d --build
 
       - name: Wait for services
         run: |
@@ -93,10 +95,7 @@ jobs:
 
       - name: Compose down
         if: always()
-        uses: docker/compose-action@v2
-        with:
-          compose-file: docker-compose.test.yml
-          down: --volumes --remove-orphans
+        run: docker compose -f docker-compose.test.yml down --volumes --remove-orphans
       # Docker-based tests are flaky/more privileged on GitHub-hosted runners
       # To enable later, set a repo variable RUN_DOCKER_TESTS to '1' and uncomment.
       # - name: Quick Docker tests
