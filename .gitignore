@@ -11,6 +11,9 @@ data/*.db
 # Ignore generated qBittorrent test data except .conf files
 test-data/qbit-config/qBittorrent/**/*
 !test-data/qbit-config/qBittorrent/**/*.conf
+# But ignore the per-run data state file
+test-data/qbit-config/qBittorrent/config/qBittorrent-data.conf
+test-data/qbit-config/qBittorrent/qBittorrent-data.conf
 
 # Ignore test logs and DBs
 test-data/qguardarr-logs/*.log
