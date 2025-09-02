@@ -104,9 +104,17 @@ trackers:
     
   - id: "default" 
     pattern: ".*"  # Catch-all (must be last)
-    max_upload_speed: 2097152  # 2 MB/s
+    max_upload_speed: 2097152  # 2 MB/s (-1 for unlimited/no cap)
     priority: 1
 ```
+
+### Tracker Matching & Limits
+- Specific patterns first: The first matching tracker in your `trackers:` list wins. Put more specific regexes before broad ones. The catch‑all (`pattern: ".*"`) must be last.
+- Catch‑all behavior: Torrents that don’t match a specific tracker map to the catch‑all. They use that tracker’s `max_upload_speed`.
+- Unlimited per‑tracker: Set `max_upload_speed: -1` on any tracker (including the catch‑all) to apply no cap. The allocator will set per‑torrent upload limits to `-1` for that tracker.
+- Switching to unlimited: If you change a tracker’s `max_upload_speed` from a finite value to `-1`, existing capped torrents on that tracker are flipped to unlimited on the next cycle.
+- Specific vs default: If a torrent matches a specific tracker and the catch‑all, the specific tracker’s limit applies (order precedence).
+- Torrents with multiple trackers: We query qBittorrent for a torrent’s trackers and use a single URL — the first “working” (status=2) tracker, else the first non‑error URL. Matching is performed on that single URL; we don’t aggregate across multiple tracker URLs for a torrent in Phase 1.
 
 ### Gradual Deployment Process
 

@@ -341,6 +341,12 @@ class AllocationEngine:
 
             tracker_limit = tracker_config.max_upload_speed
 
+            # If tracker is configured as unlimited (-1), remove caps
+            if tracker_limit <= 0:
+                for torrent in tracker_torrents:
+                    new_limits[torrent.hash] = -1  # unlimited
+                continue
+
             # Simple equal distribution for Phase 1
             if len(tracker_torrents) == 1:
                 # Single torrent gets full tracker limit

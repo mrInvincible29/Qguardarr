@@ -59,7 +59,7 @@ trackers:
   - id: "default"
     name: "All Others"
     pattern: ".*"  # Matches everything - must be the last entry
-    max_upload_speed: 2097152  # 2 MB/s
+    max_upload_speed: 2097152  # 2 MB/s (-1 for unlimited/no cap)
     priority: 1
 
 # Rollback system settings

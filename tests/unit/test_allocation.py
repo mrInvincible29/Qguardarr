@@ -639,3 +639,140 @@ class TestAllocationEngine:
         # Check current usage calculation
         expected_usage_mbps = (1000000.0 + 500000.0) / (1024 * 1024)
         assert abs(tracker1_stats["current_usage_mbps"] - expected_usage_mbps) < 0.01
+
+    def test_specific_tracker_limit_over_default_unlimited(self, allocation_engine):
+        """Specific tracker limit applies even if default is unlimited"""
+        # Set default to unlimited and tracker1 finite
+        allocation_engine.tracker_matcher.get_tracker_config.side_effect = (
+            lambda tracker_id: Mock(
+                id=tracker_id,
+                max_upload_speed=(
+                    -1
+                    if tracker_id == "default"
+                    else 5242880 if tracker_id == "tracker1" else 2097152
+                ),
+            )
+        )
+
+        torrent = TorrentInfo(
+            hash="hspec1",
+            name="t",
+            state="uploading",
+            progress=1.0,
+            dlspeed=0,
+            upspeed=50000,
+            priority=1,
+            num_seeds=1,
+            num_leechs=1,
+            ratio=1.0,
+            size=1000,
+            completed=1000,
+            tracker="http://tracker1.com/announce",
+        )
+
+        limits = allocation_engine._calculate_limits_phase1([torrent])
+        assert limits[torrent.hash] == 5242880  # finite limit from tracker1, not -1
+
+    def test_calculate_limits_unlimited_catch_all(self, allocation_engine):
+        """Torrents mapped to catch-all get unlimited (-1) when default is -1"""
+        # Make default tracker unlimited
+        allocation_engine.tracker_matcher.get_tracker_config.side_effect = (
+            lambda tracker_id: Mock(
+                id=tracker_id,
+                max_upload_speed=(
+                    -1
+                    if tracker_id == "default"
+                    else 5242880 if tracker_id == "tracker1" else 2097152
+                ),
+            )
+        )
+
+        # Two torrents that map to default (no tracker1/2 in URL)
+        torrents = [
+            TorrentInfo(
+                hash="hdef1",
+                name="t1",
+                state="uploading",
+                progress=1.0,
+                dlspeed=0,
+                upspeed=50000,
+                priority=1,
+                num_seeds=1,
+                num_leechs=1,
+                ratio=1.0,
+                size=1000,
+                completed=1000,
+                tracker="http://unknown.example/announce",
+            ),
+            TorrentInfo(
+                hash="hdef2",
+                name="t2",
+                state="uploading",
+                progress=1.0,
+                dlspeed=0,
+                upspeed=60000,
+                priority=1,
+                num_seeds=1,
+                num_leechs=1,
+                ratio=1.0,
+                size=1000,
+                completed=1000,
+                tracker="udp://random.tracker/announce",
+            ),
+        ]
+
+        limits = allocation_engine._calculate_limits_phase1(torrents)
+
+        assert limits["hdef1"] == -1
+        assert limits["hdef2"] == -1
+
+    @pytest.mark.asyncio
+    async def test_removes_cap_when_tracker_switched_to_unlimited(
+        self, allocation_engine
+    ):
+        """Existing capped torrents become unlimited when tracker limit -> -1"""
+        # One torrent on tracker1 with existing cap
+        torrent = TorrentInfo(
+            hash="hunlim1",
+            name="t",
+            state="uploading",
+            progress=1.0,
+            dlspeed=0,
+            upspeed=75000,
+            priority=1,
+            num_seeds=1,
+            num_leechs=1,
+            ratio=1.0,
+            size=1000,
+            completed=1000,
+            tracker="http://tracker1.com/announce",
+        )
+
+        # Cache current state with a finite current limit
+        allocation_engine.cache.add_torrent(
+            torrent.hash, "tracker1", torrent.upspeed, 500000
+        )
+
+        # Change tracker1 to unlimited
+        allocation_engine.tracker_matcher.get_tracker_config.side_effect = (
+            lambda tracker_id: Mock(
+                id=tracker_id,
+                max_upload_speed=(
+                    -1
+                    if tracker_id == "tracker1"
+                    else 2097152 if tracker_id == "tracker2" else 1048576
+                ),
+            )
+        )
+
+        # Calculate new limits under updated config
+        new_limits = allocation_engine._calculate_limits_phase1([torrent])
+        assert new_limits[torrent.hash] == -1
+
+        # Apply differential updates; should switch to unlimited
+        changes = await allocation_engine._apply_differential_updates(new_limits)
+
+        assert changes == 1
+        allocation_engine.qbit_client.set_torrents_upload_limits_batch.assert_called_once()
+        # Cache should reflect unlimited after update
+        assert allocation_engine.cache.get_current_limit(torrent.hash) == -1

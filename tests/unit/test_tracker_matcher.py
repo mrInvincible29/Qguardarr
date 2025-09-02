@@ -209,6 +209,42 @@ class TestTrackerMatcher:
         )
         assert private1_match["matches"] is True
 
+    def test_overlapping_patterns_order_precedence(self):
+        """When multiple patterns match, first config wins"""
+        configs = [
+            TrackerConfig(
+                id="broad",
+                name="Broad",
+                pattern=".*tracker\\.example\\.com.*",
+                max_upload_speed=111,
+                priority=5,
+            ),
+            TrackerConfig(
+                id="specific",
+                name="Specific",
+                pattern=".*tracker\\.example\\.com/announce.*",
+                max_upload_speed=222,
+                priority=6,
+            ),
+            TrackerConfig(
+                id="default",
+                name="Default",
+                pattern=".*",
+                max_upload_speed=333,
+                priority=1,
+            ),
+        ]
+
+        matcher = TrackerMatcher(configs)
+        url = "http://tracker.example.com/announce"  # matches both
+
+        # Since 'broad' comes first, it wins
+        assert matcher.match_tracker(url) == "broad"
+
+        # If we swap order, 'specific' should win
+        matcher.update_tracker_configs([configs[1], configs[0], configs[2]])
+        assert matcher.match_tracker(url) == "specific"
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

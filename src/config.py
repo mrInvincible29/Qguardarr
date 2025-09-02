@@ -15,7 +15,10 @@ class TrackerConfig(BaseModel):
     id: str
     name: str
     pattern: str
-    max_upload_speed: int = Field(gt=0, description="Max upload speed in bytes/sec")
+    max_upload_speed: int = Field(
+        ge=-1,
+        description="Max upload speed in bytes/sec (-1 for unlimited)",
+    )
     priority: int = Field(ge=1, le=10, default=1, description="Priority 1-10")
 
     @field_validator("pattern")
@@ -27,6 +30,14 @@ class TrackerConfig(BaseModel):
             return v
         except re.error as e:
             raise ValueError(f"Invalid regex pattern: {e}")
+
+    @field_validator("max_upload_speed")
+    @classmethod
+    def validate_max_upload_speed(cls, v) -> int:
+        """Allow -1 (unlimited) or any positive value"""
+        if v == -1 or v > 0:
+            return v
+        raise ValueError("max_upload_speed must be -1 (unlimited) or > 0")
 
 
 class GlobalSettings(BaseModel):
