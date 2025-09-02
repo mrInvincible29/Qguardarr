@@ -159,23 +159,36 @@ curl -XPOST http://localhost:8089/rollout \
 
 ## Testing
 
-### Unit Tests
+### Makefile Shortcuts (recommended)
+Use these convenience targets instead of calling tools directly:
 ```bash
-source venv/bin/activate
-pytest tests/unit/ -v
+# Unit tests (fast / with coverage)
+make test-fast
+make test
+
+# Linting, type checks, formatting
+make lint
+make type-check
+make format
+
+# Docker-based integration tests
+make test-docker-quick   # quick subset
+make test-docker         # fuller suite
 ```
 
-### Configuration Test
+Notes
+- Docker tests require Docker and Docker Compose (v1 or v2). The test harness auto-detects either `docker-compose` or `docker compose`.
+- CI doesn’t run Docker tests by default on GitHub-hosted runners. You can enable them by setting a repo variable `RUN_DOCKER_TESTS=1`.
+
+### Manual (advanced)
+If you prefer to run things manually:
 ```bash
+# Unit tests
+pytest tests/unit/ -v
+
+# Configuration sanity check
 python -c "from src.config import ConfigLoader; ConfigLoader().load_config(); print('✅ Config valid')"
 ```
-
-### Docker Tests (quick)
-```bash
-make test-docker-quick
-```
-
-Note: CI does not run Docker tests by default on GitHub-hosted runners. Run them locally, or enable them by setting a repo variable `RUN_DOCKER_TESTS=1` and updating the workflow as needed.
 
 ## Troubleshooting
 

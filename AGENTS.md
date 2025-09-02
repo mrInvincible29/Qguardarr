@@ -12,11 +12,18 @@ This guide helps contributors work efficiently on Qguardarr. It reflects Phase 1
 - `Makefile`, `docker-compose*.yml`, `Dockerfile`.
 
 ## Build, Test, and Development
-- Install dev deps: `make install-dev`
-- Run locally: `make dev` (Python) or `make serve` (Uvicorn).
-- Unit tests: `make test` (coverage) or `make test-fast`.
-- Integration (Docker): `make test-docker` or `make test-docker-quick`.
-- Docker run: `make docker-run`; build: `make docker-build`.
+- Always use the Makefile targets below (they bundle the right flags and tooling):
+  - Install dev deps: `make install-dev`
+  - Run locally: `make dev` (Python) or `make serve` (Uvicorn)
+  - Format, lint, types: `make format && make lint && make type-check`
+  - Unit tests (fast/coverage): `make test-fast` or `make test`
+  - Docker integration tests: `make test-docker-quick` (fast) or `make test-docker`
+  - Docker lifecycle helpers: `make test-docker-start`, `make test-docker-stop`, `make test-docker-clean`, `make test-docker-logs`
+  - Docker run/build (manual): `make docker-run`, `make docker-build`
+
+Notes
+- Integration tests require Docker and Docker Compose (v1 or v2). The test harness auto-detects either `docker-compose` or `docker compose`.
+- On CI, Docker tests are gated by a repo variable: set `RUN_DOCKER_TESTS=1` to enable the docker-tests job.
 
 ## Coding Style & Naming
 - Python 3.11, 4‑space indent. Formatting: Black (88), isort (profile=black). Lint: flake8. Types: mypy.
@@ -26,7 +33,16 @@ This guide helps contributors work efficiently on Qguardarr. It reflects Phase 1
 ## Testing Guidelines
 - Framework: pytest (+ pytest‑asyncio, pytest‑cov). Markers: `unit`, `integration`, `load`, `slow`.
 - Coverage: threshold configured via `pyproject.toml` (HTML at `htmlcov/`).
-- Quick examples: `pytest tests/unit -v`; Docker integration: `make test-docker-quick`.
+- Preferred commands:
+  - Unit tests: `make test-fast` (iterate quickly) or `make test` (with coverage)
+  - Docker integration: `make test-docker-quick` (subset) or `make test-docker` (full)
+  - Health checks: `make test-health`; performance: `make test-performance`
+
+Typical workflow
+1) `make install-dev`
+2) `make format && make lint && make type-check`
+3) `make test-fast` (then `make test` before PR)
+4) If your changes touch integration paths, run `make test-docker-quick`
 
 ## Architecture (Phase 1)
 - Single FastAPI service (port 8089) with components:
@@ -42,6 +58,9 @@ This guide helps contributors work efficiently on Qguardarr. It reflects Phase 1
 - PRs: clear description, linked issues, config diffs if applicable, logs/screenshots of `/stats` for behavior changes, and tests for new logic.
 
 ## Before You Commit (required)
-- Format and lint: `make format && make lint && make type-check`
-- Run tests: `make test-fast` (or `make test` for coverage)
-- Ensure hooks: `pre-commit run --all-files`
+- Format/lint/types: `make format && make lint && make type-check`
+- Tests: `make test-fast` (or `make test` for coverage)
+- Hooks: `make pre-commit` once, then `pre-commit run --all-files`
+
+Housekeeping
+- Generated qBittorrent runtime state (e.g., `test-data/qbit-config/.../qBittorrent-data.conf`) is ignored; tests recreate it as needed.
