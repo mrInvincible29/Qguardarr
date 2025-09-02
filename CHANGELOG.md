@@ -5,10 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog and this project aims to follow Semantic Versioning.
 
 ## [Unreleased]
+- Additions and improvements under development.
+
+## [0.2.0] - 2025-09-02
+### Added
 - feat(allocation): Optional Phase 2 weighted within‑tracker allocator with smart torrent scoring (ActivityScorer) and active‑set selection.
 - feat(config): New `global.allocation_strategy` (`equal`|`weighted`, default `equal`) and `global.max_managed_torrents` (default `1000`).
 - docs(config): Example config and README updated with Phase 2 usage and knobs.
-- docs(api): Document `/config` response includes the new Phase 2 fields (passwords/API keys still masked).
+- docs(api): Document `/config` response includes the new Phase 2 fields (passwords/API keys still masked), and `/stats` fields (`managed_torrent_count`, `score_distribution`).
 
 ### Migration notes
 - No breaking changes. Existing configs continue using Phase 1 equal split by default.
@@ -42,5 +46,6 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 ### Removed
 - Legacy integration scripts and targets replaced by unified Docker test runner.
 
-[Unreleased]: https://github.com/OWNER/REPO/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/OWNER/REPO/releases/tag/v0.1.0
+[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.2.0
+[0.1.0]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.1.0
