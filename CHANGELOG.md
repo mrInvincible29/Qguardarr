@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog and this project aims to follow Semantic Versioning.
 
 ## [Unreleased]
-- Additions and improvements under development.
+### Added
+- feat(phase3): Soft per‑tracker borrowing strategy (`global.allocation_strategy: soft`) with priority‑weighted pooling and smoothing (EMA + min delta).
+- feat(api): `GET /preview/next-cycle` to preview proposed per‑torrent limits and per‑tracker effective caps (includes humanized summary fields).
+- feat(api): `POST /smoothing/reset` to clear soft smoothing state (per‑tracker or all).
+- feat(stats): Expose current allocation `strategy` in `/stats`; enhance `/stats/trackers` with `effective_cap_mbps`, `borrowed_mbps`.
+- docs: Clear strategy guidance (equal vs weighted vs soft) with numeric and plain‑English examples; assume link 100 MiB/s and unlimited catch‑all in examples.
+- config(example): Phase 3 knobs in `global` — `borrow_threshold_ratio`, `max_borrow_fraction`, `smoothing_alpha`, `min_effective_delta`.
+
+### Tests
+- Comprehensive unit tests for soft strategy preview and allocator branches (equal/remaining/reduce, rounding add/reduce, unlimited), new endpoints, and qBittorrent client helpers.
 
 ## [0.2.0] - 2025-09-02
 ### Added

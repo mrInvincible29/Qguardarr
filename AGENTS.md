@@ -62,5 +62,10 @@ Typical workflow
 - Tests: `make test-fast` (or `make test` for coverage)
 - Hooks: `make pre-commit` once, then `pre-commit run --all-files`
 
+Changelog policy
+- When a change is user‑visible (new feature, fix, docs, config, endpoints), update `CHANGELOG.md` under the `[Unreleased]` section before committing.
+- Use Keep a Changelog format with "### Added/Changed/Fixed/Removed" headings.
+- Summarize changes concisely; link to config keys/endpoints where helpful.
+
 Housekeeping
 - Generated qBittorrent runtime state (e.g., `test-data/qbit-config/.../qBittorrent-data.conf`) is ignored; tests recreate it as needed.
