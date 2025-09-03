@@ -163,6 +163,7 @@ async def health_check() -> Dict[str, Any]:
             {
                 "rollout_percentage": config.global_settings.rollout_percentage,
                 "update_interval": config.global_settings.update_interval,
+                "dry_run": getattr(config.global_settings, "dry_run", False),
             }
         )
 
@@ -379,6 +380,74 @@ async def reset_smoothing(request: Request):
         if strategy != "soft":
             resp["message"] = "Strategy is not 'soft'; smoothing state may be unused."
         return resp
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/limits/reset")
+async def reset_limits(request: Request):
+    """Set upload limits to unlimited (-1) for torrents previously touched by Qguardarr.
+
+    Works in both dry-run and real modes.
+    Body:
+      {"confirm": true, "scope": "unrestored"|"all", "include_restored": false}
+    """
+    allocation_engine = app_state.get("allocation_engine")
+    rollback_manager = app_state.get("rollback_manager")
+    qbit_client = app_state.get("qbit_client")
+    if not allocation_engine or not rollback_manager:
+        raise HTTPException(status_code=503, detail="Service not ready")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    confirm = bool(body.get("confirm"))
+    scope = body.get("scope", "unrestored")  # or "all"
+    if not confirm:
+        raise HTTPException(status_code=400, detail="Confirmation required: {'confirm': true}")
+
+    try:
+        # Determine affected hashes
+        include_restored = True if scope == "all" else False
+        hashes = await rollback_manager.get_distinct_hashes(include_restored=include_restored)
+        if not hashes:
+            return {"status": "ok", "count": 0, "mode": "dry-run" if allocation_engine.dry_run else "real"}
+
+        # Dry-run path: persist -1 in store and update cache
+        if allocation_engine.dry_run and allocation_engine.dry_run_store:
+            updates = {h: -1 for h in hashes}
+            allocation_engine.dry_run_store.set_many(updates)
+            # Update cache too
+            for h in hashes:
+                idx = allocation_engine.cache.hash_to_index.get(h)
+                if idx is not None:
+                    allocation_engine.cache.current_limits[idx] = -1
+            # Optionally mark entries restored in rollback DB when requested
+            if bool(body.get("mark_restored")):
+                await rollback_manager.mark_entries_restored(hashes)
+            return {"status": "ok", "count": len(hashes), "mode": "dry-run"}
+
+        # Real path: set unlimited via qBittorrent in batches
+        if not qbit_client:
+            raise HTTPException(status_code=503, detail="qBittorrent client not ready")
+
+        updates = {h: -1 for h in hashes}
+        await qbit_client.set_torrents_upload_limits_batch(updates)
+        # Update cache
+        for h in hashes:
+            idx = allocation_engine.cache.hash_to_index.get(h)
+            if idx is not None:
+                allocation_engine.cache.current_limits[idx] = -1
+
+        # Optionally mark entries restored in rollback DB when requested
+        if bool(body.get("mark_restored")):
+            await rollback_manager.mark_entries_restored(hashes)
+        return {"status": "ok", "count": len(hashes), "mode": "real"}
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

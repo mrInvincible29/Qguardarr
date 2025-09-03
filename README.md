@@ -150,6 +150,33 @@ Start
 
 See the full Strategy Guide for examples and tuning: [STRATEGIES.md](STRATEGIES.md)
 
+### Dry‑run Mode
+
+Dry‑run lets you exercise the allocation logic safely against your live qBittorrent without applying any changes.
+
+- Enable in `config/qguardarr.yaml` (global):
+  ```yaml
+  global:
+    dry_run: true
+    dry_run_store_path: ./data/dry_run_limits.json  # optional, default shown
+  ```
+- Behavior:
+  - Reads real torrents and current limits from qBittorrent.
+  - Computes proposed per‑torrent limits using the selected strategy (equal/weighted/soft).
+  - Does NOT call qBittorrent to set limits and does NOT write rollback entries.
+  - Logs a human‑friendly diff for each proposed change, e.g.
+    `[DRY-RUN] abcd1234: 256.0 KiB/s -> 1.20 MiB/s`.
+  - Persists simulated per‑torrent limits to a JSON store (default `data/dry_run_limits.json`).
+  - Updates the in‑memory cache to reflect simulated limits so repeated identical changes are not proposed every cycle.
+- Visibility:
+  - `/health` includes `dry_run: true` when enabled.
+  - `/stats` includes `dry_run: true` and the current `strategy`.
+- JSON store usage:
+  - It’s a simple key→value mapping `{ "<torrent-hash>": <limit-int> }` loaded into memory once and used for O(1) lookups (no line‑by‑line scanning).
+  - On each dry‑run cycle, new simulated limits are merged and saved back to the same file.
+  - To clear, stop the service and delete the file (or ask us to add a `/dry-run/clear` endpoint).
+
+
 ### Strategy Guide
 
 For detailed examples, plain‑English explanations, safe defaults, and tuning tips, see: [STRATEGIES.md](STRATEGIES.md)
@@ -241,6 +268,43 @@ curl -XPOST http://localhost:8089/rollback \
 curl -XPOST http://localhost:8089/rollout \
   -H "Content-Type: application/json" \
   -d '{"percentage": 50}'
+```
+
+### Reset Limits (set to unlimited)
+
+Set upload limits to unlimited (\-1) for torrents previously touched by Qguardarr.
+
+Endpoint: `POST /limits/reset`
+
+Body options:
+- `confirm`: true (required)
+- `scope`: `"unrestored"` (default) or `"all"`
+  - `unrestored`: only torrents with rollback entries that have not been marked restored
+  - `all`: all torrents that have any rollback history
+- `mark_restored`: true|false (optional; default false)
+  - If true, marks rollback entries for the affected torrents as restored (see below)
+
+Behavior:
+- Dry‑run: updates the dry‑run JSON store and in‑memory cache; does not call qBittorrent.
+- Real mode: sets unlimited in qBittorrent (batched) and updates the cache.
+
+Rollback interaction:
+- `/rollback` re‑applies prior per‑torrent limits using entries where `restored = 0`.
+- After a reset:
+  - If you DO NOT pass `mark_restored: true`, existing rollback entries remain unrestored, so a later `/rollback` can restore pre‑reset limits.
+  - If you DO pass `mark_restored: true`, those entries are marked restored, so `/rollback` will not change those torrents anymore (history remains for audit).
+
+Examples
+```bash
+# Reversible reset (can be undone later with /rollback)
+curl -XPOST http://localhost:8089/limits/reset \
+  -H "Content-Type: application/json" \
+  -d '{"confirm": true, "scope": "unrestored"}'
+
+# Final reset for all touched torrents (prevents future rollbacks)
+curl -XPOST http://localhost:8089/limits/reset \
+  -H "Content-Type: application/json" \
+  -d '{"confirm": true, "scope": "all", "mark_restored": true}'
 ```
 
 ## Performance Expectations (Phase 1)

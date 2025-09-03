@@ -30,20 +30,24 @@ global:
   max_borrow_fraction: 0.5       # each tracker may borrow up to 50% of its base cap
   smoothing_alpha: 0.4           # EMA alpha for effective cap smoothing
   min_effective_delta: 0.1       # min relative change to update effective cap
+  
+  # Dry run mode: compute and log proposed changes without applying to qBittorrent
+  dry_run: false
+  dry_run_store_path: "./data/dry_run_limits.json"  # where to persist simulated per-torrent limits
 
 # qBittorrent Web UI connection
 qbittorrent:
-  host: "localhost"  # qBittorrent host
-  port: 8080         # qBittorrent Web UI port
-  username: "admin"  # qBittorrent username
+  host: "${QBIT_HOST}"  # e.g., host.docker.internal or your host IP
+  port: ${QBIT_PORT}     # e.g., 8080
+  username: "${QBIT_USERNAME}"  # qBittorrent username (env-substituted)
   password: "${QBIT_PASSWORD}"  # Use environment variable for security
-  timeout: 30        # Connection timeout in seconds
+  timeout: 30             # Connection timeout in seconds
 
 # Cross-seed integration (optional)
 cross_seed:
   enabled: false  # Set to true to forward completion events
-  url: "http://localhost:2468/api/webhook"
-  api_key: "${CROSS_SEED_API_KEY}"  # Use environment variable
+  url: "${CROSS_SEED_URL}"           # e.g., http://host.docker.internal:2468/api/webhook
+  api_key: "${CROSS_SEED_API_KEY}"   # Use environment variable
   timeout: 15
 
 # Tracker definitions - customize for your trackers
@@ -73,7 +77,7 @@ trackers:
   - id: "default"
     name: "All Others"
     pattern: ".*"  # Matches everything - must be the last entry
-    max_upload_speed: 2097152  # 2 MB/s (-1 for unlimited/no cap)
+    max_upload_speed: -1  # unlimited/no cap for unmatched torrents
     priority: 1
 
 # Rollback system settings

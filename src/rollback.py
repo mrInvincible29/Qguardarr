@@ -292,6 +292,32 @@ class RollbackManager:
             logging.error(f"Failed to get unrestored entries: {e}")
             return []
 
+    async def get_distinct_hashes(self, include_restored: bool = True) -> List[str]:
+        """Get distinct torrent hashes recorded in rollback DB.
+
+        Args:
+            include_restored: When False, only return hashes with unrestored entries.
+
+        Returns:
+            List of unique torrent hashes.
+        """
+        try:
+            async with aiosqlite.connect(str(self.db_path)) as db:
+                if include_restored:
+                    query = "SELECT DISTINCT torrent_hash FROM rollback_entries"
+                    params = ()
+                else:
+                    query = (
+                        "SELECT DISTINCT torrent_hash FROM rollback_entries WHERE restored = 0"
+                    )
+                    params = ()
+                async with db.execute(query, params) as cursor:
+                    rows = await cursor.fetchall()
+                    return [row[0] for row in rows]
+        except Exception as e:
+            logging.error(f"Failed to get distinct hashes: {e}")
+            return []
+
     async def mark_entries_restored(self, torrent_hashes: List[str]) -> int:
         """Mark entries as restored"""
         if not torrent_hashes:

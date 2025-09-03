@@ -9,6 +9,7 @@ import numpy as np
 
 from src.config import QguardarrConfig
 from src.qbit_client import QBittorrentClient, TorrentInfo
+from src.dry_run_store import DryRunStore
 from src.rollback import RollbackManager
 from src.tracker_matcher import TrackerMatcher
 
@@ -254,6 +255,10 @@ class AllocationEngine:
         # Phase 2: scoring helper (used when weighted strategies are enabled)
         self.activity_scorer = ActivityScorer()
         self.gradual_rollout = GradualRollout(config.global_settings.rollout_percentage)
+        self.dry_run = bool(getattr(config.global_settings, "dry_run", False))
+        self.dry_run_store: Optional[DryRunStore] = None
+        if self.dry_run:
+            self.dry_run_store = DryRunStore(config.global_settings.dry_run_store_path)
 
         # Priority queues for processing
         self.pending_checks: Set[str] = set()  # Torrent hashes to check
@@ -394,13 +399,20 @@ class AllocationEngine:
             # Match tracker
             tracker_id = self.tracker_matcher.match_tracker(torrent.tracker)
 
-            # Get current limit from qBittorrent if not in cache
+            # Get current limit from qBittorrent (or dry-run store) if not in cache
             current_limit = self.cache.get_current_limit(torrent.hash)
             if current_limit is None:
-                current_limit = await self.qbit_client.get_torrent_upload_limit(
-                    torrent.hash
-                )
-                self.stats["api_calls_last_cycle"] += 1
+                # In dry run, if we have a simulated value, prefer it.
+                if self.dry_run and self.dry_run_store:
+                    sim = self.dry_run_store.get(torrent.hash)
+                    if sim is not None:
+                        current_limit = sim
+                # Fallback to real qBittorrent
+                if current_limit is None:
+                    current_limit = await self.qbit_client.get_torrent_upload_limit(
+                        torrent.hash
+                    )
+                    self.stats["api_calls_last_cycle"] += 1
 
             # Update or add to cache
             if torrent.hash in self.cache.hash_to_index:
@@ -628,7 +640,40 @@ class AllocationEngine:
 
         logging.debug(f"Updating limits for {len(updates_needed)} torrents")
 
-        # Record changes for rollback before applying
+        # Dry run: print a human-friendly summary and simulate applying by updating
+        # the dry-run store and cache; do NOT call qBittorrent or record rollback.
+        if self.dry_run:
+            def fmt_speed(bps: int) -> str:
+                if bps is None:
+                    return "unknown"
+                if bps <= 0:
+                    return "unlimited"
+                if bps < 1024:
+                    return f"{bps} B/s"
+                if bps < 1024 * 1024:
+                    return f"{bps / 1024:.1f} KiB/s"
+                return f"{bps / 1048576:.2f} MiB/s"
+
+            logging.info("[DRY-RUN] Proposed per-torrent limit changes:")
+            for h, new_limit in updates_needed.items():
+                old_limit = self.cache.get_current_limit(h)
+                logging.info(
+                    f"[DRY-RUN] {h[:8]}: {fmt_speed(old_limit or -1)} -> {fmt_speed(new_limit)}"
+                )
+
+            # Persist simulated state
+            if self.dry_run_store:
+                self.dry_run_store.set_many(updates_needed)
+
+            # Update cache to reflect simulated changes
+            for torrent_hash, new_limit in updates_needed.items():
+                index = self.cache.hash_to_index.get(torrent_hash)
+                if index is not None:
+                    self.cache.current_limits[index] = new_limit
+
+            return len(updates_needed)
+
+        # Record changes for rollback before applying (real mode only)
         rollback_entries = []
         for torrent_hash, new_limit in updates_needed.items():
             current_limit = self.cache.get_current_limit(torrent_hash) or -1
@@ -919,10 +964,11 @@ class AllocationEngine:
         cache_size_mb = (self.cache.used_count * 200) / (1024 * 1024)
         stats["estimated_memory_mb"] = round(cache_size_mb, 2)
 
-        # Strategy for visibility
+        # Strategy and dry-run for visibility
         stats["strategy"] = getattr(
             self.config.global_settings, "allocation_strategy", "equal"
         )
+        stats["dry_run"] = bool(self.dry_run)
 
         return stats
 

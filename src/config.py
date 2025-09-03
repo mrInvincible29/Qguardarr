@@ -76,6 +76,14 @@ class GlobalSettings(BaseModel):
         default=0.1,
         description="Min relative change in effective cap to apply update",
     )
+    # Dry run mode
+    dry_run: bool = Field(
+        default=False, description="If true, do not apply changes to qBittorrent"
+    )
+    dry_run_store_path: str = Field(
+        default="./data/dry_run_limits.json",
+        description="Path to JSON file storing simulated per-torrent limits in dry-run",
+    )
 
     @field_validator("allocation_strategy")
     @classmethod
