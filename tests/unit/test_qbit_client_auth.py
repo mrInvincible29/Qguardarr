@@ -1,96 +1,73 @@
-"""Tests for QBittorrentClient._authenticate backoff and ban paths."""
-
+import asyncio
+import types
 import pytest
+import logging
 
 from src.config import QBittorrentSettings
 from src.qbit_client import QBittorrentClient
 
 
-class FR:
-    def __init__(self, status_code=200, text="Ok."):
-        self.status_code = status_code
+class DummyResponse:
+    def __init__(self, text="Ok.", status_code=200):
         self.text = text
+        self.status_code = status_code
 
     def raise_for_status(self):
-        if self.status_code >= 400:
+        if not (200 <= self.status_code < 300):
             raise RuntimeError(f"HTTP {self.status_code}")
 
 
-class FakeSession:
-    def __init__(self, seq):
-        self.seq = list(seq)
-        self.calls = 0
+class DummyAsyncClient:
+    def __init__(self, *args, **kwargs):
+        self.posts = []  # list of (url, data)
 
-    async def post(self, url, data=None):
-        self.calls += 1
-        item = self.seq.pop(0) if self.seq else FR(200, "Ok.")
-        if isinstance(item, Exception):
-            raise item
-        return item
+    async def post(self, url, data=None, **kwargs):
+        self.posts.append((url, data))
+        # Simulate qBittorrent login success
+        if url.endswith("/api/v2/auth/login"):
+            # Only accept the provided password
+            if data and data.get("password") == "secret":
+                return DummyResponse("Ok.", 200)
+            return DummyResponse("Fails.", 200)
+        return DummyResponse("Ok.", 200)
 
+    async def request(self, method, url, **kwargs):
+        return DummyResponse("Ok.", 200)
 
-@pytest.mark.asyncio
-async def test_authenticate_progressive_delay(monkeypatch):
-    # First attempt returns 200 with non-Ok text, then Ok
-    client = QBittorrentClient(
-        QBittorrentSettings(
-            host="remote", port=8080, username="admin", password="pass", timeout=5
-        )
-    )
-    client.session = FakeSession([FR(200, "Fail"), FR(200, "Ok.")])
-
-    slept = []
-
-    async def fake_sleep(d):
-        slept.append(d)
-
-    monkeypatch.setattr("src.qbit_client.asyncio.sleep", fake_sleep)
-    await client._authenticate()
-    # Progressive delay called once with 1.5s after first failure
-    assert slept and slept[0] == 1.5
-    assert client.authenticated is True
-
-
-@pytest.mark.asyncio
-async def test_authenticate_ip_ban_backoff(monkeypatch):
-    client = QBittorrentClient(
-        QBittorrentSettings(
-            host="remote", port=8080, username="admin", password="pass", timeout=5
-        )
-    )
-    # First attempt raises 403-like error, then Ok
-    client.session = FakeSession([Exception("403 Forbidden"), FR(200, "Ok.")])
-
-    slept = []
-
-    async def fake_sleep(d):
-        slept.append(d)
-
-    monkeypatch.setattr("src.qbit_client.asyncio.sleep", fake_sleep)
-    await client._authenticate()
-    # Ban backoff sleep should be 2.0 seconds on first attempt
-    assert 2.0 in slept
-    assert client.authenticated is True
-
-
-@pytest.mark.asyncio
-async def test_authenticate_all_fail(monkeypatch):
-    client = QBittorrentClient(
-        QBittorrentSettings(
-            host="remote", port=8080, username="admin", password="pass", timeout=5
-        )
-    )
-
-    # Session that always returns non-Ok response
-    class AlwaysFailSession:
-        async def post(self, url, data=None):
-            return FR(200, "Nope")
-
-    client.session = AlwaysFailSession()
-
-    async def fake_sleep(d):
+    async def aclose(self):
         return None
 
-    monkeypatch.setattr("src.qbit_client.asyncio.sleep", fake_sleep)
-    with pytest.raises(RuntimeError):
-        await client._authenticate()
+
+@pytest.mark.asyncio
+async def test_auth_uses_only_config_password_and_masks_logs(monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+    # Patch httpx.AsyncClient used inside QBittorrentClient
+    import httpx
+
+    monkeypatch.setattr(httpx, "AsyncClient", DummyAsyncClient)
+
+    settings = QBittorrentSettings(
+        host="localhost",
+        port=8080,
+        username="user",
+        password="secret",
+        timeout=10,
+    )
+    client = QBittorrentClient(settings)
+
+    # Run connect (should authenticate once with provided password)
+    await client.connect()
+
+    # Verify only one login attempt and with masked logs
+    posts = client.session.posts  # type: ignore[attr-defined]
+    assert len(posts) >= 1
+    # First post should be login with configured password
+    url, data = posts[0]
+    assert url.endswith("/api/v2/auth/login")
+    assert data["username"] == "user"
+    assert data["password"] == "secret"
+
+    # Ensure logs do not contain the raw password
+    log_text = "\n".join([rec.getMessage() for rec in caplog.records])
+    assert "secret" not in log_text
+    assert "******" in log_text or "[REDACTED]" in log_text

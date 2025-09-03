@@ -81,6 +81,14 @@ Run directly from the published GHCR image — no git clone required.
      --data-urlencode "tracker=%T"
    ```
 
+### Notes
+
+- Ports: The container listens on `APP_PORT` (default `8089`). If you change `global.port` in `config/qguardarr.yaml`, also set `APP_PORT` in `.env` to the same value so the container port and health check match. Example: `APP_PORT=8189` and update config `global.port: 8189`.
+- Linux permissions: Ensure `data/` and `logs/` are writable by your user before starting so the container can write through the bind mounts.
+  - Fresh setup: `mkdir -p data logs`
+  - If Docker already created them as root: `sudo chown -R $(id -u):$(id -g) data logs`
+- Compose version warning: Compose V2 ignores the `version:` key; the repo compose omits it to avoid warnings.
+
 ## Webhooks (Optional, Recommended)
 
 - Purpose: Webhooks let qBittorrent notify Qguardarr when torrents are added, completed, or deleted. Qguardarr queues these events immediately and prioritizes affected torrents/trackers in the next allocation cycle. It also supports forwarding completion events to cross-seed.

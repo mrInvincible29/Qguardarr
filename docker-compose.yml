@@ -1,11 +1,10 @@
-version: '3.8'
-
 services:
   qguardarr:
     image: ghcr.io/mrinvincible29/qguardarr:latest
     container_name: qguardarr
+    user: "${UID:-1000}:${GID:-1000}"
     ports:
-      - "8089:8089"
+      - "${APP_PORT:-8089}:${APP_PORT:-8089}"
     volumes:
       - ./config:/app/config:ro
       - ./data:/app/data
@@ -19,6 +18,7 @@ services:
       - QBIT_PORT=${QBIT_PORT:-8080}
       - QBIT_USERNAME=${QBIT_USERNAME:-admin}
       - QBIT_PASSWORD=${QBIT_PASSWORD}
+      - APP_PORT=${APP_PORT:-8089}
       
       # Cross-seed integration (optional)
       # On Mac/Windows: use host.docker.internal instead of localhost
@@ -29,8 +29,8 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
     
-    # Resource limits for Phase 1
-    mem_limit: 80m
+    # Resource limits (adjust via MEM_LIMIT)
+    mem_limit: ${MEM_LIMIT:-256m}
     cpus: 0.1
     
     # Restart policy
@@ -38,7 +38,7 @@ services:
     
     # Health check
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8089/health')"]
+      test: ["CMD", "python", "-c", "import os,httpx; httpx.get('http://localhost:' + os.environ.get('APP_PORT','8089') + '/health')"]
       interval: 30s
       timeout: 5s
       retries: 3

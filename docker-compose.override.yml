@@ -2,8 +2,6 @@
 # This file is automatically loaded by docker-compose
 # Provides Mac-specific networking and volume configurations
 
-version: '3.8'
-
 services:
   qguardarr:
     # For Mac: better volume performance with delegated consistency
@@ -16,5 +14,3 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     
-    # Ensure proper user permissions on Mac
-    user: "${UID:-1000}:${GID:-1000}"

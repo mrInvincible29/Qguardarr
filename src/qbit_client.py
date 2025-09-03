@@ -143,88 +143,38 @@ class QBittorrentClient:
         logging.info("Disconnected from qBittorrent")
 
     async def _authenticate(self):
-        """Authenticate with qBittorrent with multiple password attempts"""
+        """Authenticate using only configured credentials; never log raw secrets."""
         if not self.session:
             raise RuntimeError("Session not initialized")
 
-        # List of passwords to try in order (optimized for pre-configured setup)
-        passwords_to_try = [
-            "adminadmin",  # Pre-configured password for testing
-            self.config.password,  # Configured password
-            "admin",  # Simple admin password
-            "",  # Empty password
-        ]
+        def mask(s: str) -> str:
+            if not s:
+                return "(empty)"
+            if len(s) <= 4:
+                return "****"
+            return s[0] + "***" + s[-1]
 
-        # For testing environments, add fewer fallback passwords to reduce attempts
-        if self.config.host in ["qbittorrent-test", "localhost"]:
-            # Only add essential fallbacks to avoid triggering IP ban
-            if "adminpass123" not in passwords_to_try:
-                passwords_to_try.append("adminpass123")
-        else:
-            # For production, try more passwords but carefully
-            additional_passwords = ["adminpass123", "password", "qbittorrent"]
-            for pwd in additional_passwords:
-                if pwd not in passwords_to_try:
-                    passwords_to_try.append(pwd)
-
-        last_error = None
-        logging.info(
-            f"Trying {len(passwords_to_try)} passwords in order: {[p if p else '(empty)' for p in passwords_to_try]}"
-        )
-
-        for attempt, password in enumerate(passwords_to_try, 1):
-            try:
-                logging.info(
-                    f"Authentication attempt {attempt}/{len(passwords_to_try)}: trying username='{self.config.username}' password='{password if password else '(empty)'}'"
-                )
-                login_data = {
-                    "username": self.config.username,
-                    "password": password,
-                }
-
-                response = await self.session.post(
-                    f"{self.base_url}/api/v2/auth/login", data=login_data
-                )
-                response.raise_for_status()
-
-                if response.text.strip() == "Ok.":
-                    self.authenticated = True
-                    if password != self.config.password:
-                        logging.info(
-                            f"Authenticated with alternative password on attempt {attempt}"
-                        )
-                    else:
-                        logging.debug("Authenticated with qBittorrent")
-                    return
-                else:
-                    last_error = response.text.strip()
-                    logging.debug(
-                        f"Authentication attempt {attempt} failed: {last_error}"
-                    )
-
-            except Exception as e:
-                last_error = str(e)
-                logging.debug(f"Authentication attempt {attempt} error: {e}")
-
-                # If we get 403, it might be IP ban - wait longer
-                if "403" in str(e) or "Forbidden" in str(e):
-                    logging.warning(
-                        f"Possible IP ban detected on attempt {attempt}, waiting longer..."
-                    )
-                    if attempt < len(passwords_to_try):
-                        await asyncio.sleep(
-                            min(10.0, attempt * 2.0)
-                        )  # Exponential backoff up to 10s
-                    continue
-
-            # Progressive delay between attempts to avoid triggering IP ban
-            if attempt < len(passwords_to_try):
-                delay = min(3.0, 1.0 + attempt * 0.5)  # 1.5s, 2s, 2.5s, 3s max
-                await asyncio.sleep(delay)
-
-        raise RuntimeError(
-            f"Authentication failed after {len(passwords_to_try)} attempts. Last error: {last_error}"
-        )
+        try:
+            logging.info(
+                "Authenticating to qBittorrent with configured credentials (user=%s, pass=%s)",
+                self.config.username,
+                "******",
+            )
+            login_data = {
+                "username": self.config.username,
+                "password": self.config.password,
+            }
+            response = await self.session.post(
+                f"{self.base_url}/api/v2/auth/login", data=login_data
+            )
+            response.raise_for_status()
+            if response.text.strip() == "Ok.":
+                self.authenticated = True
+                logging.debug("Authenticated with qBittorrent")
+                return
+            raise RuntimeError(f"Authentication failed: {response.text.strip()}")
+        except Exception as e:
+            raise RuntimeError(f"Authentication failed: {e}")
 
     async def _make_request(
         self, method: str, endpoint: str, **kwargs

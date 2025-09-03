@@ -18,6 +18,7 @@ from src.qbit_client import QBittorrentClient
 from src.rollback import RollbackManager
 from src.tracker_matcher import TrackerMatcher
 from src.webhook_handler import WebhookHandler
+from src.utils.logging_setup import setup_logging
 
 # Global state
 app_state: Dict[str, Any] = {
@@ -491,22 +492,24 @@ async def root():
 
 
 if __name__ == "__main__":
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler(), logging.FileHandler("logs/qguardarr.log")],
-    )
-
-    # Ensure directories exist
+    # Ensure directories exist early
     Path("logs").mkdir(exist_ok=True)
     Path("data").mkdir(exist_ok=True)
 
-    # Get configuration
+    # Load configuration first to honor logging settings
     try:
         config_loader = ConfigLoader()
         config = config_loader.load_config()
+    except Exception as e:
+        # If config fails, set basic logging to console and exit
+        setup_logging("INFO", None)
+        logging.error(f"Failed to load configuration: {e}")
+        exit(1)
 
+    # Setup logging per config; fall back to console-only if file not writable
+    setup_logging(config.logging.level, config.logging.file)
+
+    try:
         # Run the application
         uvicorn.run(
             "src.main:app",
