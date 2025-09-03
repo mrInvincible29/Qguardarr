@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 
 def setup_logging(level: str = "INFO", logfile: Optional[str] = None) -> bool:
@@ -9,7 +9,7 @@ def setup_logging(level: str = "INFO", logfile: Optional[str] = None) -> bool:
     Ensures the log directory exists before creating the file handler.
     Returns True if file logging is enabled, else False.
     """
-    handlers = [logging.StreamHandler()]
+    handlers: List[logging.Handler] = [logging.StreamHandler()]
     file_enabled = False
 
     if logfile:
@@ -29,4 +29,3 @@ def setup_logging(level: str = "INFO", logfile: Optional[str] = None) -> bool:
     )
 
     return file_enabled
-
