@@ -71,7 +71,7 @@ Run directly from the published GHCR image — no git clone required.
    # or: docker-compose up -d
    ```
 
-6. **Configure qBittorrent webhook**:
+6. **Optional: Configure qBittorrent webhook (faster response)**:
    In qBittorrent → Options → Downloads → "Run external program on torrent completion":
    ```bash
    curl -XPOST http://localhost:8089/webhook \
@@ -80,6 +80,42 @@ Run directly from the published GHCR image — no git clone required.
      --data-urlencode "name=%N" \
      --data-urlencode "tracker=%T"
    ```
+
+## Webhooks (Optional, Recommended)
+
+- Purpose: Webhooks let qBittorrent notify Qguardarr when torrents are added, completed, or deleted. Qguardarr queues these events immediately and prioritizes affected torrents/trackers in the next allocation cycle. It also supports forwarding completion events to cross-seed.
+- Not required: Qguardarr runs periodic allocation cycles at `global.update_interval` even without webhooks. New/changed torrents will be processed on the next cycle.
+- Benefits when enabled:
+  - Faster reaction to new/completed torrents (prioritized next cycle instead of waiting blindly).
+  - More targeted work: when the webhook includes a tracker URL, Qguardarr schedules an update for that tracker specifically, reducing unnecessary API churn.
+  - Optional cross-seed forwarding with retry.
+- Tradeoffs if disabled:
+  - Updates apply only on the next scheduled cycle; worst-case delay ≈ `update_interval` (default 300s).
+  - You can lower `update_interval` to reduce latency, but that increases qBittorrent API calls per hour.
+- Recommendation: Keep a moderate `update_interval` (e.g., 300s) and enable webhooks for timely, efficient updates.
+
+Webhook setup examples (qBittorrent → Options → Downloads → External program):
+- On torrent completion:
+  ```bash
+  curl -XPOST http://localhost:8089/webhook \
+    --data-urlencode "event=complete" \
+    --data-urlencode "hash=%I" \
+    --data-urlencode "name=%N" \
+    --data-urlencode "tracker=%T" \
+    --data-urlencode "category=%L" \
+    --data-urlencode "tags=%G" \
+    --data-urlencode "save_path=%D"
+  ```
+- On torrent added (if using an "on add" hook or script integration):
+  ```bash
+  curl -XPOST http://localhost:8089/webhook \
+    --data-urlencode "event=add" \
+    --data-urlencode "hash=%I" \
+    --data-urlencode "name=%N" \
+    --data-urlencode "tracker=%T"
+  ```
+
+Security tip: If exposing Qguardarr outside localhost, secure access (network ACLs or reverse proxy with auth). The `/webhook` endpoint is designed to be low-cost and resilient; it always responds quickly (<10ms) and processes events asynchronously.
 
 ### Option 2: Direct Python
 

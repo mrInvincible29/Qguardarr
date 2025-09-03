@@ -20,7 +20,8 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 - chore(docker): Default `docker-compose.yml` now pulls `ghcr.io/mrinvincible29/qguardarr:latest` instead of building locally.
 
 ### Documentation
-- docs: Docker Quick Start updated to run directly from GHCR (no git clone needed) with a minimal compose and config example.
+- docs: Docker Quick Start updated to run directly from GHCR (no git clone needed) with repo-sourced compose and config.
+- docs: Clarify that qBittorrent webhooks are optional (periodic cycles still work) and explain benefits when enabled.
 
 ## [0.2.0] - 2025-09-02
 ### Added
