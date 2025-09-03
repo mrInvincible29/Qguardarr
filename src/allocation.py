@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import numpy as np
 
 from src.config import QguardarrConfig
-from src.qbit_client import QBittorrentClient, TorrentInfo
 from src.dry_run_store import DryRunStore
+from src.qbit_client import QBittorrentClient, TorrentInfo
 from src.rollback import RollbackManager
 from src.tracker_matcher import TrackerMatcher
 
@@ -346,8 +346,18 @@ class AllocationEngine:
     async def _get_active_torrents(self) -> List[TorrentInfo]:
         """Get active torrents from qBittorrent"""
         try:
-            # Only get uploading torrents to reduce API calls
-            torrents = await self.qbit_client.get_torrents(filter_active=True)
+            # Only get active uploading torrents at or above configured threshold
+            min_upload_bps = (
+                int(
+                    getattr(
+                        self.config.global_settings, "active_torrent_threshold_kb", 10
+                    )
+                )
+                * 1024
+            )
+            torrents = await self.qbit_client.get_torrents(
+                filter_active=True, min_upload_bps=min_upload_bps
+            )
             self.stats["api_calls_last_cycle"] += 1
 
             # Also include recently active torrents from cache
@@ -643,6 +653,7 @@ class AllocationEngine:
         # Dry run: print a human-friendly summary and simulate applying by updating
         # the dry-run store and cache; do NOT call qBittorrent or record rollback.
         if self.dry_run:
+
             def fmt_speed(bps: int) -> str:
                 if bps is None:
                     return "unknown"

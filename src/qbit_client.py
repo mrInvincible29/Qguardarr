@@ -216,21 +216,35 @@ class QBittorrentClient:
             logging.error(f"API request failed: {e}")
             raise
 
-    async def get_torrents(self, filter_active: bool = True) -> List[TorrentInfo]:
-        """Get list of torrents"""
+    async def get_torrents(
+        self, filter_active: bool = True, min_upload_bps: int = 1
+    ) -> List[TorrentInfo]:
+        """Get list of torrents.
+
+        When filter_active is True, requests qBittorrent with filter=active and
+        then keeps only torrents with upspeed >= min_upload_bps. Trackers are
+        fetched only for the filtered subset to reduce API calls at scale.
+        """
         params = {}
         if filter_active:
-            # Only get uploading torrents to reduce load
-            params["filter"] = "uploading"
+            params["filter"] = "active"
 
         response = await self._make_request(
             "GET", "/api/v2/torrents/info", params=params
         )
         torrents_data = response.json()
 
-        torrents = []
+        # Pre-filter by actual upload speed if active filter requested
+        if filter_active:
+            torrents_data = [
+                t
+                for t in torrents_data
+                if int(t.get("upspeed", 0)) >= int(min_upload_bps)
+            ]
+
+        torrents: List[TorrentInfo] = []
         for torrent_data in torrents_data:
-            # Get primary tracker
+            # Get primary tracker only for the subset we plan to manage
             tracker_info = await self._get_torrent_tracker(torrent_data["hash"])
             torrent_data["tracker"] = tracker_info
 

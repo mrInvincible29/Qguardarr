@@ -10,15 +10,37 @@ from fastapi.testclient import TestClient
 def test_limits_reset_dry_run(tmp_path: Path, monkeypatch):
     import src.main as main
     from src.allocation import AllocationEngine
-    from src.config import QguardarrConfig, GlobalSettings, QBittorrentSettings, RollbackSettings, CrossSeedSettings, LoggingSettings, TrackerConfig
+    from src.config import (
+        CrossSeedSettings,
+        GlobalSettings,
+        LoggingSettings,
+        QBittorrentSettings,
+        QguardarrConfig,
+        RollbackSettings,
+        TrackerConfig,
+    )
 
     cfg = QguardarrConfig(
         **{
-            "global": GlobalSettings(dry_run=True, dry_run_store_path=str(tmp_path / "dry.json")),
-            "qbittorrent": QBittorrentSettings(host="h", port=8080, username="u", password="p"),
+            "global": GlobalSettings(
+                dry_run=True, dry_run_store_path=str(tmp_path / "dry.json")
+            ),
+            "qbittorrent": QBittorrentSettings(
+                host="h", port=8080, username="u", password="p"
+            ),
             "cross_seed": CrossSeedSettings(enabled=False),
-            "trackers": [TrackerConfig(id="default", name="d", pattern=".*", max_upload_speed=-1, priority=1)],
-            "rollback": RollbackSettings(database_path=str(tmp_path / "rb.db"), track_all_changes=True),
+            "trackers": [
+                TrackerConfig(
+                    id="default",
+                    name="d",
+                    pattern=".*",
+                    max_upload_speed=-1,
+                    priority=1,
+                )
+            ],
+            "rollback": RollbackSettings(
+                database_path=str(tmp_path / "rb.db"), track_all_changes=True
+            ),
             "logging": LoggingSettings(),
         }
     )
@@ -29,7 +51,9 @@ def test_limits_reset_dry_run(tmp_path: Path, monkeypatch):
     # Distinct hashes returned
     rollback.get_distinct_hashes.return_value = ["a", "b"]
 
-    engine = AllocationEngine(config=cfg, qbit_client=qbit, tracker_matcher=matcher, rollback_manager=rollback)
+    engine = AllocationEngine(
+        config=cfg, qbit_client=qbit, tracker_matcher=matcher, rollback_manager=rollback
+    )
     main.app_state["allocation_engine"] = engine
     main.app_state["rollback_manager"] = rollback
     main.app_state["qbit_client"] = qbit
@@ -61,7 +85,10 @@ def test_limits_reset_real(monkeypatch):
     main.app_state["qbit_client"] = qbit
 
     client = TestClient(main.app)
-    r = client.post("/limits/reset", json={"confirm": True, "scope": "unrestored", "mark_restored": True})
+    r = client.post(
+        "/limits/reset",
+        json={"confirm": True, "scope": "unrestored", "mark_restored": True},
+    )
     assert r.status_code == 200
     data = r.json()
     assert data["mode"] == "real"

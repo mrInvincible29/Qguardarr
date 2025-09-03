@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-09-03
+### Changed
+- perf(qbit): Query torrents with `filter=active` (instead of `uploading`) and only fetch trackers for torrents with `upspeed >= active_torrent_threshold_kb*1024`. This significantly reduces qBittorrent API calls on large libraries.
+
+### Tests
+- test: Add unit test to verify `filter=active` is used and tracker lookups are performed only for the active subset.
+
+### Documentation
+- docs(config): Example config now reads `global.port` from `APP_PORT` to align with Compose.
+
 ## [0.3.0] - 2025-09-03
 ### Added
 - feat(phase3): Soft per‑tracker borrowing strategy (`global.allocation_strategy: soft`) with priority‑weighted pooling and smoothing (EMA + min delta).
@@ -69,7 +79,8 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 ### Removed
 - Legacy integration scripts and targets replaced by unified Docker test runner.
 
-[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.1
 [0.3.0]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.0
 [0.2.0]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.1.0

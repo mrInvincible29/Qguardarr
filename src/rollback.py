@@ -307,9 +307,7 @@ class RollbackManager:
                     query = "SELECT DISTINCT torrent_hash FROM rollback_entries"
                     params = ()
                 else:
-                    query = (
-                        "SELECT DISTINCT torrent_hash FROM rollback_entries WHERE restored = 0"
-                    )
+                    query = "SELECT DISTINCT torrent_hash FROM rollback_entries WHERE restored = 0"
                     params = ()
                 async with db.execute(query, params) as cursor:
                     rows = await cursor.fetchall()

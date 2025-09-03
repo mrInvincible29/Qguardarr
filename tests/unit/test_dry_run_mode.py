@@ -12,7 +12,9 @@ from src.qbit_client import TorrentInfo
 
 
 @pytest.mark.asyncio
-async def test_dry_run_cycle_persists_limits(tmp_path: Path, test_config: QguardarrConfig, caplog):
+async def test_dry_run_cycle_persists_limits(
+    tmp_path: Path, test_config: QguardarrConfig, caplog
+):
     # Enable dry run
     test_config.global_settings.dry_run = True
     test_config.global_settings.dry_run_store_path = str(tmp_path / "dry.json")
@@ -76,6 +78,7 @@ async def test_dry_run_cycle_persists_limits(tmp_path: Path, test_config: Qguard
 
     # Capture info logs
     import logging
+
     caplog.set_level(logging.INFO)
 
     # Run one allocation cycle; should log [DRY-RUN] and write simulated limits

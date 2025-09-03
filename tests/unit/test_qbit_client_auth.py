@@ -1,7 +1,8 @@
 import asyncio
-import types
-import pytest
 import logging
+import types
+
+import pytest
 
 from src.config import QBittorrentSettings
 from src.qbit_client import QBittorrentClient

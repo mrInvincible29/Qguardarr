@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Qguardarr",
     description="qBittorrent per-tracker upload speed limiter",
-    version="0.3.0",
+    version="0.3.1",
     lifespan=lifespan,
 )
 
@@ -154,7 +154,7 @@ async def health_check() -> Dict[str, Any]:
     health_data = {
         "status": app_state.get("health_status", "unknown"),
         "uptime_seconds": round(uptime, 1),
-        "version": "0.3.0",
+        "version": "0.3.1",
         "last_cycle_time": app_state.get("last_cycle_time"),
         "last_cycle_duration": app_state.get("last_cycle_duration"),
     }
@@ -484,7 +484,7 @@ async def root():
     """Root endpoint"""
     return {
         "name": "Qguardarr",
-        "version": "0.3.0",
+        "version": "0.3.1",
         "description": "qBittorrent per-tracker upload speed limiter",
         "status": app_state.get("health_status", "unknown"),
         "endpoints": {

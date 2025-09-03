@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
 
 def setup_logging(level: str = "INFO", logfile: Optional[str] = None) -> bool:
