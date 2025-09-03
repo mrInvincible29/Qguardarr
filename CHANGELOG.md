@@ -16,6 +16,12 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 ### Tests
 - Comprehensive unit tests for soft strategy preview and allocator branches (equal/remaining/reduce, rounding add/reduce, unlimited), new endpoints, and qBittorrent client helpers.
 
+### Changed
+- chore(docker): Default `docker-compose.yml` now pulls `ghcr.io/mrinvincible29/qguardarr:latest` instead of building locally.
+
+### Documentation
+- docs: Docker Quick Start updated to run directly from GHCR (no git clone needed) with a minimal compose and config example.
+
 ## [0.2.0] - 2025-09-02
 ### Added
 - feat(allocation): Optional Phase 2 weighted within‑tracker allocator with smart torrent scoring (ActivityScorer) and active‑set selection.

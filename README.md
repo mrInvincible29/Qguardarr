@@ -28,24 +28,50 @@ This is the **Phase 1 MVP** implementation featuring:
 
 ### Option 1: Docker (Recommended)
 
-1. **Clone and configure**:
+Run directly from the published GHCR image — no git clone required.
+
+1. **Create a working folder**:
    ```bash
-   git clone <repository>
+   mkdir -p qguardarr/{config,data,logs}
    cd qguardarr
-   cp config/qguardarr.yaml.example config/qguardarr.yaml
-   cp .env.example .env
    ```
 
-2. **Edit configuration**:
-   - Update `config/qguardarr.yaml` with your tracker patterns and limits
-   - Update `.env` with your qBittorrent credentials
-
-3. **Start the service**:
+2. **Fetch Compose file from repo** (no inline copy):
    ```bash
-   docker-compose up -d
+   # docker-compose.yml
+   curl -sSLO https://raw.githubusercontent.com/mrInvincible29/Qguardarr/main/docker-compose.yml
+   # Optional Mac/Windows overrides
+   curl -sSLO https://raw.githubusercontent.com/mrInvincible29/Qguardarr/main/docker-compose.override.yml
    ```
 
-4. **Configure qBittorrent webhook**:
+3. **Create environment file** (or download example and edit):
+   ```bash
+   # Quick create
+   cat > .env << 'EOF'
+   QBIT_HOST=host.docker.internal
+   QBIT_PORT=8080
+   QBIT_USERNAME=admin
+   QBIT_PASSWORD=your_password_here
+   CROSS_SEED_URL=http://host.docker.internal:2468/api/webhook
+   CROSS_SEED_API_KEY=
+   EOF
+   # Or: curl -sSLo .env https://raw.githubusercontent.com/mrInvincible29/Qguardarr/main/.env.example
+   ```
+
+4. **Get config from repo and edit**:
+   ```bash
+   curl -sSLo config/qguardarr.yaml \
+     https://raw.githubusercontent.com/mrInvincible29/Qguardarr/main/config/qguardarr.yaml.example
+   # Then open config/qguardarr.yaml and customize trackers and limits
+   ```
+
+5. **Start the service**:
+   ```bash
+   docker compose up -d
+   # or: docker-compose up -d
+   ```
+
+6. **Configure qBittorrent webhook**:
    In qBittorrent → Options → Downloads → "Run external program on torrent completion":
    ```bash
    curl -XPOST http://localhost:8089/webhook \
