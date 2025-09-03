@@ -17,8 +17,8 @@ from src.config import ConfigLoader
 from src.qbit_client import QBittorrentClient
 from src.rollback import RollbackManager
 from src.tracker_matcher import TrackerMatcher
-from src.webhook_handler import WebhookHandler
 from src.utils.logging_setup import setup_logging
+from src.webhook_handler import WebhookHandler
 
 # Global state
 app_state: Dict[str, Any] = {
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Qguardarr",
     description="qBittorrent per-tracker upload speed limiter",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -154,7 +154,7 @@ async def health_check() -> Dict[str, Any]:
     health_data = {
         "status": app_state.get("health_status", "unknown"),
         "uptime_seconds": round(uptime, 1),
-        "version": "0.2.0",
+        "version": "0.3.0",
         "last_cycle_time": app_state.get("last_cycle_time"),
         "last_cycle_duration": app_state.get("last_cycle_duration"),
     }
@@ -407,14 +407,22 @@ async def reset_limits(request: Request):
     confirm = bool(body.get("confirm"))
     scope = body.get("scope", "unrestored")  # or "all"
     if not confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required: {'confirm': true}")
+        raise HTTPException(
+            status_code=400, detail="Confirmation required: {'confirm': true}"
+        )
 
     try:
         # Determine affected hashes
         include_restored = True if scope == "all" else False
-        hashes = await rollback_manager.get_distinct_hashes(include_restored=include_restored)
+        hashes = await rollback_manager.get_distinct_hashes(
+            include_restored=include_restored
+        )
         if not hashes:
-            return {"status": "ok", "count": 0, "mode": "dry-run" if allocation_engine.dry_run else "real"}
+            return {
+                "status": "ok",
+                "count": 0,
+                "mode": "dry-run" if allocation_engine.dry_run else "real",
+            }
 
         # Dry-run path: persist -1 in store and update cache
         if allocation_engine.dry_run and allocation_engine.dry_run_store:
@@ -476,7 +484,7 @@ async def root():
     """Root endpoint"""
     return {
         "name": "Qguardarr",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "description": "qBittorrent per-tracker upload speed limiter",
         "status": app_state.get("health_status", "unknown"),
         "endpoints": {

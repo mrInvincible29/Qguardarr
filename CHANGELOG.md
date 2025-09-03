@@ -5,23 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog and this project aims to follow Semantic Versioning.
 
 ## [Unreleased]
+
+## [0.3.0] - 2025-09-03
 ### Added
 - feat(phase3): Soft per‑tracker borrowing strategy (`global.allocation_strategy: soft`) with priority‑weighted pooling and smoothing (EMA + min delta).
 - feat(api): `GET /preview/next-cycle` to preview proposed per‑torrent limits and per‑tracker effective caps (includes humanized summary fields).
 - feat(api): `POST /smoothing/reset` to clear soft smoothing state (per‑tracker or all).
+- feat(api): `POST /limits/reset` to set upload limits to unlimited for torrents touched by Qguardarr (dry‑run supported).
 - feat(stats): Expose current allocation `strategy` in `/stats`; enhance `/stats/trackers` with `effective_cap_mbps`, `borrowed_mbps`.
-- docs: Clear strategy guidance (equal vs weighted vs soft) with numeric and plain‑English examples; assume link 100 MiB/s and unlimited catch‑all in examples.
-- config(example): Phase 3 knobs in `global` — `borrow_threshold_ratio`, `max_borrow_fraction`, `smoothing_alpha`, `min_effective_delta`.
 
-### Tests
-- Comprehensive unit tests for soft strategy preview and allocator branches (equal/remaining/reduce, rounding add/reduce, unlimited), new endpoints, and qBittorrent client helpers.
+### Security
+- fix(security): Remove multi‑password auth fallback list; authenticate only with configured credentials. Redact passwords from logs.
 
 ### Changed
 - chore(docker): Default `docker-compose.yml` now pulls `ghcr.io/mrinvincible29/qguardarr:latest` instead of building locally.
+- chore(docker): Remove `version:` key from Compose files to avoid warnings; publish `APP_PORT` env for port binding/health.
+- chore(docker): Drop `mem_limit` from Compose; rely on host scheduling or user‑provided limits.
+- chore(logging): Centralize logging setup; ensure log directory exists; avoid file handler permission errors.
 
 ### Documentation
-- docs: Docker Quick Start updated to run directly from GHCR (no git clone needed) with repo-sourced compose and config.
+- docs: Docker Quick Start updated to run directly from GHCR (no git clone needed) with repo‑sourced compose and config; add `.env` with `APP_PORT`.
 - docs: Clarify that qBittorrent webhooks are optional (periodic cycles still work) and explain benefits when enabled.
+
+### Tests
+- test: Add unit test to enforce single‑password auth and log redaction; run Docker quick integration tests.
 
 ## [0.2.0] - 2025-09-02
 ### Added
@@ -62,6 +69,7 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 ### Removed
 - Legacy integration scripts and targets replaced by unified Docker test runner.
 
-[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.0
 [0.2.0]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.1.0
