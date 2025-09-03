@@ -515,7 +515,8 @@ if __name__ == "__main__":
         exit(1)
 
     # Setup logging per config; fall back to console-only if file not writable
-    setup_logging(config.logging.level, config.logging.file)
+    # Let Uvicorn own console logging to avoid duplicate lines; we only add file handler
+    setup_logging(config.logging.level, config.logging.file, add_stream=False)
 
     try:
         # Run the application

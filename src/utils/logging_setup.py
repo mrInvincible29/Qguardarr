@@ -3,13 +3,17 @@ from pathlib import Path
 from typing import List, Optional
 
 
-def setup_logging(level: str = "INFO", logfile: Optional[str] = None) -> bool:
+def setup_logging(
+    level: str = "INFO", logfile: Optional[str] = None, add_stream: bool = False
+) -> bool:
     """Configure logging with optional file output.
 
     Ensures the log directory exists before creating the file handler.
     Returns True if file logging is enabled, else False.
     """
-    handlers: List[logging.Handler] = [logging.StreamHandler()]
+    handlers: List[logging.Handler] = []
+    if add_stream:
+        handlers.append(logging.StreamHandler())
     file_enabled = False
 
     if logfile:
