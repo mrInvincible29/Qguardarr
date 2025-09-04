@@ -348,7 +348,8 @@ class AllocationEngine:
             self.stats["limits_applied"] += changes_applied
 
             # Step 6: Cleanup old cache entries
-            cleaned = self.cache.cleanup_old_torrents()
+            ttl = int(getattr(self.config.global_settings, "cache_ttl_seconds", 1800))
+            cleaned = self.cache.cleanup_old_torrents(max_age_seconds=ttl)
             if cleaned > 0:
                 logging.debug(f"Cleaned up {cleaned} old cache entries")
 
@@ -383,18 +384,6 @@ class AllocationEngine:
                 filter_active=True, min_upload_bps=min_upload_bps
             )
             self.stats["api_calls_last_cycle"] += 1
-
-            # Also include recently active torrents from cache (bounded subset)
-            cached_hashes = set(self.cache.hash_to_index.keys())
-            if cached_hashes:
-                active_hashes = {t.hash for t in torrents}
-                missing = [h for h in cached_hashes if h not in active_hashes]
-                if missing:
-                    MAX_BACKFILL = min(len(missing), 1000)
-                    subset = missing[:MAX_BACKFILL]
-                    backfill = await self.qbit_client.get_torrents_by_hashes(subset)
-                    self.stats["api_calls_last_cycle"] += 1
-                    torrents.extend(backfill)
 
             return torrents
 

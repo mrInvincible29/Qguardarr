@@ -127,19 +127,18 @@ async def test_run_allocation_cycle_exception(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_active_torrents_cache_merge():
+async def test_get_active_torrents_only_active():
     config = make_config()
     qbit = AsyncMock()
     engine = AllocationEngine(config, qbit, Mock(), AsyncMock())
 
-    # Preload cache with h2
+    # Preload cache with h2 (should NOT be included if not active)
     engine.cache.add_torrent("h2", "default", 0.0, 0)
 
-    # Active returns empty; backfill by hashes returns h2
+    # Active returns empty
     qbit.get_torrents.side_effect = [[]]
-    qbit.get_torrents_by_hashes = AsyncMock(return_value=[make_torrent("h2")])
     out = await engine._get_active_torrents()
-    assert any(t.hash == "h2" for t in out)
+    assert out == []
 
 
 @pytest.mark.asyncio

@@ -1,42 +1,26 @@
-# Qguardarr - qBittorrent Per-Tracker Speed Limiter
+# Qguardarr — qBittorrent Per‑Tracker Upload Limiter
 
-A production-ready system to dynamically limit upload speeds on a per-tracker basis for qBittorrent.
+Per‑tracker upload caps for qBittorrent with minimal API load, automatic config hot‑reload, and safe rollback.
 
-## Features
+## Highlights
 
-- **Collective per-tracker limits**: Sum of all torrents for a tracker must not exceed configured limit
-- **Real-time response**: New torrents get limits within 1 minute via webhook events
-- **Complete rollback capability**: Restore qBittorrent to original state on demand
-- **Gradual rollout**: Test on subset of torrents before full deployment
-- **Memory efficient**: <60MB RAM for managing thousands of torrents
-- **Hot-reload configuration**: Change settings without service restart
+- Per‑tracker caps with efficient batching and differential updates
+- Active‑only selection (uses `filter=active`) + upspeed threshold
+- Automatic config hot‑reload (file watcher) + manual reload endpoint
+- Rollback and reset endpoints for safe recovery
+- Pattern tester endpoint to validate tracker regexes quickly
+- Managed listing endpoint to see what’s being controlled
+- Docker‑first, GHCR images; simple Compose setup
 
-## Phase 1 Implementation Status ✅
+## Quick Start (Docker)
 
-This is the **Phase 1 MVP** implementation featuring:
-
-✅ **Basic per-tracker limits (hard limits)** - Each tracker gets a fixed upload speed limit  
-✅ **Active torrent tracking only** - Monitors ~500-3000 actively uploading torrents instead of all 30K+  
-✅ **Fast webhook handling** - <10ms response time to prevent qBittorrent timeouts  
-✅ **SQLite rollback system** - Track and reverse all limit changes  
-✅ **Equal distribution** - Fair bandwidth sharing within each tracker  
-✅ **Gradual rollout** - Start with 10% of torrents, increase safely  
-✅ **Docker deployment** - One-command setup with docker-compose  
-
-
-## Quick Start
-
-### Option 1: Docker (Recommended)
-
-Run directly from the published GHCR image — no git clone required.
-
-1. **Create a working folder**:
+1) Create a working folder
    ```bash
    mkdir -p qguardarr/{config,data,logs}
    cd qguardarr
    ```
 
-2. **Fetch Compose file from repo** (no inline copy):
+2) Fetch Compose file from repo
    ```bash
    # docker-compose.yml
    curl -sSLO https://raw.githubusercontent.com/mrInvincible29/Qguardarr/main/docker-compose.yml
@@ -44,7 +28,7 @@ Run directly from the published GHCR image — no git clone required.
    curl -sSLO https://raw.githubusercontent.com/mrInvincible29/Qguardarr/main/docker-compose.override.yml
    ```
 
-3. **Create environment file** (or download example and edit):
+3) Create `.env` (or download example)
    ```bash
    # Quick create
    cat > .env << 'EOF'
@@ -54,32 +38,33 @@ Run directly from the published GHCR image — no git clone required.
    QBIT_PASSWORD=your_password_here
    CROSS_SEED_URL=http://host.docker.internal:2468/api/webhook
    CROSS_SEED_API_KEY=
+   APP_PORT=8089
    EOF
    # Or: curl -sSLo .env https://raw.githubusercontent.com/mrInvincible29/Qguardarr/main/.env.example
    ```
 
-4. **Get config from repo and edit**:
+4) Get config and edit
    ```bash
    curl -sSLo config/qguardarr.yaml \
      https://raw.githubusercontent.com/mrInvincible29/Qguardarr/main/config/qguardarr.yaml.example
    # Then open config/qguardarr.yaml and customize trackers and limits
    ```
 
-5. **Start the service**:
+5) Start
    ```bash
    docker compose up -d
    # or: docker-compose up -d
    ```
 
-6. **Optional: Configure qBittorrent webhook (faster response)**:
-   In qBittorrent → Options → Downloads → "Run external program on torrent completion":
-   ```bash
-   curl -XPOST http://localhost:8089/webhook \
-     --data-urlencode "event=complete" \
-     --data-urlencode "hash=%I" \
-     --data-urlencode "name=%N" \
-     --data-urlencode "tracker=%T"
-   ```
+6) Optional: qBittorrent webhook (faster reaction)
+    qBittorrent → Options → Downloads → “Run external program on torrent completion”:
+    ```bash
+    curl -XPOST http://localhost:8089/webhook \
+      --data-urlencode "event=complete" \
+      --data-urlencode "hash=%I" \
+      --data-urlencode "name=%N" \
+      --data-urlencode "tracker=%T"
+    ```
 
 ### Notes
 
@@ -125,33 +110,7 @@ Webhook setup examples (qBittorrent → Options → Downloads → External progr
 
 Security tip: If exposing Qguardarr outside localhost, secure access (network ACLs or reverse proxy with auth). The `/webhook` endpoint is designed to be low-cost and resilient; it always responds quickly (<10ms) and processes events asynchronously.
 
-### Option 2: Direct Python
-
-1. **Setup environment**:
-   ```bash
-   git clone <repository>
-   cd qguardarr
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-
-2. **Configure and run**:
-   ```bash
-   cp config/qguardarr.yaml.example config/qguardarr.yaml
-   # Edit qguardarr.yaml with your settings
-   export QBIT_PASSWORD="your_password"
-   python -m src.main
-   ```
-
-### Option 3: Startup Script
-
-```bash
-chmod +x scripts/start.sh
-./scripts/start.sh
-```
-
-## Configuration
+## Configuration (essentials)
 
 ### Important Settings
 
@@ -178,85 +137,80 @@ global:
   min_effective_delta: 0.1         # min relative change to update effective cap
 ```
 
-**Tracker Configuration** (customize for your trackers):
+Global defaults that matter most:
+- `global.rollout_percentage`: default 100 when omitted. Lower it to test safely.
+- `global.active_torrent_threshold_kb`: minimum upspeed (KiB/s) a torrent must have to be considered.
+- `trackers[*].max_upload_speed`: bytes/sec (use `-1` for unlimited/no cap).
+- `global.cache_ttl_seconds`: how long to keep inactive torrents in the in‑memory cache (default 1800s). Inactive torrents do not count toward sharing; they are cleaned up after this TTL.
+
+Example trackers (order matters; specific before catch‑all):
 ```yaml
 trackers:
-  - id: "premium"
-    pattern: ".*premium-tracker\\.com.*"
+  - id: "private1"
+    name: "Private Tracker A"
+    pattern: ".*private-tracker\\.example\\.org.*"
     max_upload_speed: 10485760  # 10 MB/s
-    priority: 10
-    
-  - id: "default" 
-    pattern: ".*"  # Catch-all (must be last)
-    max_upload_speed: -1  # unlimited/no cap for unmatched torrents
+    priority: 2
+
+  - id: "custom1"
+    name: "Custom Tracker B"
+    pattern: ".*tracker-b\\.example\\.net.*"
+    max_upload_speed: 2097152  # 2 MB/s
+    priority: 3
+
+  - id: "default"
+    name: "All Others"
+    pattern: ".*"   # Catch-all (must be last)
+    max_upload_speed: -1
     priority: 1
 ```
 
-### Tracker Matching & Limits
-- Specific patterns first: The first matching tracker in your `trackers:` list wins. Put more specific regexes before broad ones. The catch‑all (`pattern: ".*"`) must be last.
-- Catch‑all behavior: Torrents that don’t match a specific tracker map to the catch‑all. They use that tracker’s `max_upload_speed`.
-- Unlimited per‑tracker: Set `max_upload_speed: -1` on any tracker (including the catch‑all) to apply no cap. The allocator will set per‑torrent upload limits to `-1` for that tracker.
-- Switching to unlimited: If you change a tracker’s `max_upload_speed` from a finite value to `-1`, existing capped torrents on that tracker are flipped to unlimited on the next cycle.
-- Specific vs default: If a torrent matches a specific tracker and the catch‑all, the specific tracker’s limit applies (order precedence).
-- Torrents with multiple trackers: We query qBittorrent for a torrent’s trackers and use a single URL — the first “working” (status=2) tracker, else the first non‑error URL. Matching is performed on that single URL; we don’t aggregate across multiple tracker URLs for a torrent in Phase 1.
+Pattern tips
+- Use `.*domain\.tld.*` (not `.domain\.tld.`). Dots must be escaped and `.*` added.
+- Subdomains (e.g., tracker.private-tracker.example.org) are matched by `.*private-tracker\.example\.org.*`.
+- Multiple variants: add multiple tracker entries (specific wins by order).
+- Anchors: if you need exact control, use `^...$`; otherwise Qguardarr normalizes simple patterns by wrapping with `.*`.
+- Test quickly: `GET /match/test?url=<tracker_url>&detailed=true`.
 
-### Strategies
+## Endpoints
 
-Qguardarr supports three strategies controlled by `global.allocation_strategy`:
-- `equal` (Phase 1): equal split per tracker with a 10 KiB/s per‑torrent floor.
-- `weighted` (Phase 2): proportional within‑tracker based on peers/speed; bounds: min 10 KiB/s, max 60% of tracker cap.
-- `soft` (Phase 3): cross‑tracker borrowing of unused capacity, weighted by tracker priority, with smoothing to avoid oscillation.
+- `GET /health` — service health and basic stats
+- `GET /config` — current (sanitized) config
+- `POST /config/reload` — apply config file changes immediately
+- `GET /stats` — detailed stats (includes strategy, dry‑run, cache stats)
+- `GET /stats/trackers` — per‑tracker stats: configured_limit_mbps, active_torrents, current_usage_mbps, effective_cap_mbps, borrowed_mbps, efficiency_percent
+- `GET /stats/managed` — managed torrents grouped by tracker: [{hash, current_limit, added_at, last_seen, age_seconds}]
+- `GET /preview/next-cycle` — compute proposed changes without applying
+- `POST /cycle/force` — run an allocation cycle now
+- `POST /rollout` body `{ "percentage": 50 }` — change rollout percentage
+- `POST /rollback` body `{ "confirm": true, "reason": "..." }` — restore original limits from rollback DB
+- `POST /limits/reset` body `{ "confirm": true, "scope": "unrestored"|"all", "mark_restored": false }` — set previously touched torrents to unlimited
+- `POST /smoothing/reset` body `{ "all": true }` or `{ "tracker_id": "id" }` — reset soft‑strategy smoothing state
+- `POST /webhook` — accept qBittorrent events (e.g., `event=complete&hash=...&tracker=...`)
+- `GET /match/test?url=<tracker_url>&detailed=true` — test a URL against configured patterns
 
-Strategy selection (flow)
+## Dry‑run mode
+
+Enable safe simulation without touching qBittorrent:
+```yaml
+global:
+  dry_run: true
+  dry_run_store_path: ./data/dry_run_limits.json
 ```
-Start
-  |
-  |-- Prefer simplicity / one tracker / few torrents?  --> equal
-  |
-  |-- Many torrents per tracker; stronger should get more?  --> weighted
-  |
-  |-- Multiple trackers; some under-used, others starved?    --> soft
-```
-
-See the full Strategy Guide for examples and tuning: [STRATEGIES.md](STRATEGIES.md)
-
-### Dry‑run Mode
-
-Dry‑run lets you exercise the allocation logic safely against your live qBittorrent without applying any changes.
-
-- Enable in `config/qguardarr.yaml` (global):
-  ```yaml
-  global:
-    dry_run: true
-    dry_run_store_path: ./data/dry_run_limits.json  # optional, default shown
-  ```
-- Behavior:
-  - Reads real torrents and current limits from qBittorrent.
-  - Computes proposed per‑torrent limits using the selected strategy (equal/weighted/soft).
-  - Does NOT call qBittorrent to set limits and does NOT write rollback entries.
-  - Logs a human‑friendly diff for each proposed change, e.g.
-    `[DRY-RUN] abcd1234: 256.0 KiB/s -> 1.20 MiB/s`.
-  - Persists simulated per‑torrent limits to a JSON store (default `data/dry_run_limits.json`).
-  - Updates the in‑memory cache to reflect simulated limits so repeated identical changes are not proposed every cycle.
-- Visibility:
-  - `/health` includes `dry_run: true` when enabled.
-  - `/stats` includes `dry_run: true` and the current `strategy`.
-- JSON store usage:
-  - It’s a simple key→value mapping `{ "<torrent-hash>": <limit-int> }` loaded into memory once and used for O(1) lookups (no line‑by‑line scanning).
-  - On each dry‑run cycle, new simulated limits are merged and saved back to the same file.
-  - To clear, stop the service and delete the file (or ask us to add a `/dry-run/clear` endpoint).
+Logs show `[DRY-RUN]` diffs; `/stats` and `/health` display `dry_run: true`.
 
 
 ### Strategy Guide
 
 For detailed examples, plain‑English explanations, safe defaults, and tuning tips, see: [STRATEGIES.md](STRATEGIES.md)
 
-### Gradual Deployment Process
+## Operations
 
-1. **Start conservative**: `rollout_percentage: 10`
-2. **Monitor for 24-48 hours** - check logs, memory usage, API performance
-3. **Increase gradually**: 25% → 50% → 75% → 100%
-4. **Watch for issues**: High memory usage, API timeouts, qBittorrent instability
+- Hot‑reload: saving `config/qguardarr.yaml` is auto‑applied within a few seconds; or call `POST /config/reload`.
+- Logs: application logs → `logs/qguardarr.log`; Uvicorn writes console logs.
+- Force cycle: `POST /cycle/force`.
+- Change rollout: `POST /rollout {"percentage": 100}`.
+- Inspect managed set: `GET /stats/managed`.
 
 ## Monitoring & Management
 
@@ -377,48 +331,21 @@ curl -XPOST http://localhost:8089/limits/reset \
   -d '{"confirm": true, "scope": "all", "mark_restored": true}'
 ```
 
-## Performance Expectations (Phase 1)
+## Docker notes
 
-| Metric | Target | Typical |
-|--------|---------|---------|
-| Memory Usage | <60MB | ~45MB |
-| CPU Usage | <3% | ~1.5% |
-| Update Cycle | <10s | ~3s |
-| Webhook Response | <10ms | ~5ms |
-| API Calls/Cycle | <300 | ~150 |
+- The Compose file maps `APP_PORT` to the container and health check; set it in `.env` to match `global.port` (default 8089).
+- On macOS/Windows, use `host.docker.internal` to reach host qBittorrent; on Linux, use `localhost` or the host IP.
 
-## Testing
+## API Cheatsheet (curl)
 
-### Makefile Shortcuts (recommended)
-Use these convenience targets instead of calling tools directly:
-```bash
-# Unit tests (fast / with coverage)
-make test-fast
-make test
-
-# Linting, type checks, formatting
-make lint
-make type-check
-make format
-
-# Docker-based integration tests
-make test-docker-quick   # quick subset
-make test-docker         # fuller suite
-```
-
-Notes
-- Docker tests require Docker and Docker Compose (v1 or v2). The test harness auto-detects either `docker-compose` or `docker compose`.
-- CI doesn’t run Docker tests by default on GitHub-hosted runners. You can enable them by setting a repo variable `RUN_DOCKER_TESTS=1`.
-
-### Manual (advanced)
-If you prefer to run things manually:
-```bash
-# Unit tests
-pytest tests/unit/ -v
-
-# Configuration sanity check
-python -c "from src.config import ConfigLoader; ConfigLoader().load_config(); print('✅ Config valid')"
-```
+- Health: `curl http://localhost:8089/health | jq`
+- Trackers: `curl http://localhost:8089/stats/trackers | jq`
+- Managed: `curl http://localhost:8089/stats/managed | jq`
+- Preview: `curl http://localhost:8089/preview/next-cycle | jq`
+- Force cycle: `curl -XPOST http://localhost:8089/cycle/force | jq`
+- Rollout 50%: `curl -XPOST http://localhost:8089/rollout -H 'Content-Type: application/json' -d '{"percentage":50}'`
+- Reset limits (unrestored): `curl -XPOST http://localhost:8089/limits/reset -H 'Content-Type: application/json' -d '{"confirm":true}'`
+- Match test: `curl 'http://localhost:8089/match/test?url=http://tracker.example.com/announce&detailed=true' | jq`
 
 ## Troubleshooting
 
@@ -453,43 +380,6 @@ python -c "from src.config import ConfigLoader; ConfigLoader().load_config(); pr
 2. **Rollback all changes**: Use rollback endpoint before stopping
 3. **Reset qBittorrent**: Restart qBittorrent to clear any stuck limits
 
-## Development
-
-### Common Commands
-```bash
-# Install dev deps
-make install-dev
-
-# Lint, type-check, unit tests
-make lint && make type-check && make test
-
-# Docker integration (full or quick)
-make test-docker      # full
-make test-docker-quick
-```
-
-### CI/CD
-- GitHub Actions run linting, type-checking, unit tests, and quick Docker tests on PRs.
-- Multi-arch Docker images (linux/amd64, linux/arm64) are built via Buildx and pushed to registry.
-
-### Running Tests
-```bash
-pytest tests/ -v --cov=src
-```
-
-### Code Style
-```bash
-black src/ tests/
-isort src/ tests/
-mypy src/
-```
-
-## Next Steps
-
-🚀 Phase 3: Soft limits with cross-tracker borrowing + priorities  
-📊 Phase 4: Advanced monitoring and production polish  
-
 ---
-
-**Support**: Create issues for bugs or feature requests  
-**Contributing**: Pull requests welcome for enhancements
+Support: please open issues for bugs/feature requests  
+Contributions welcome

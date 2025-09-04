@@ -288,13 +288,24 @@ class QBittorrentClient:
             # Find working tracker (status 2 = working)
             for tracker in trackers:
                 if tracker.get("status") == 2 and tracker.get("url"):
+                    logging.debug(
+                        "Tracker selected (working) for %s: %s",
+                        torrent_hash[:8],
+                        tracker.get("url"),
+                    )
                     return tracker["url"]
 
             # Fallback to first tracker with URL
             for tracker in trackers:
                 if tracker.get("url") and not tracker["url"].startswith("**"):
+                    logging.debug(
+                        "Tracker selected (fallback) for %s: %s",
+                        torrent_hash[:8],
+                        tracker.get("url"),
+                    )
                     return tracker["url"]
 
+            logging.debug("No tracker URL found for %s", torrent_hash[:8])
             return ""
 
         except Exception as e:
