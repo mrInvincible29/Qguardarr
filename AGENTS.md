@@ -69,3 +69,24 @@ Changelog policy
 
 Housekeeping
 - Generated qBittorrent runtime state (e.g., `test-data/qbit-config/.../qBittorrent-data.conf`) is ignored; tests recreate it as needed.
+
+## Releases (GitHub CLI)
+
+Use the GitHub CLI (`gh`) to update release notes after a tag/release exists.
+
+- Prerequisites: `gh` installed and authenticated.
+  - Check: `gh --version` and `gh auth status`
+  - Login: `gh auth login` (GitHub.com → HTTPS → browser or token)
+
+- Edit notes for an existing release (preferred):
+  - Put notes in a file (e.g., `RELEASE_NOTES_0_3_5.md`).
+  - Update release: `gh release edit v0.3.5 --title "v0.3.5" --notes-file RELEASE_NOTES_0_3_5.md`
+  - Verify: `gh release view v0.3.5 --json tagName,url,body | jq -r '.tagName+"\n"+.url+"\n---\n"+.body'`
+
+- If a release doesn’t exist for the tag yet:
+  - Create: `gh release create v0.3.5 --title "v0.3.5" --notes-file RELEASE_NOTES_0_3_5.md`
+
+- Tips:
+  - Include a “Full Changelog” link: `https://github.com/<org>/<repo>/compare/vX.Y.Z-1...vX.Y.Z`
+  - Add assets later: `gh release upload v0.3.5 dist/*`
+  - In CI, set `GH_TOKEN`/`GITHUB_TOKEN` for non-interactive `gh` usage.
