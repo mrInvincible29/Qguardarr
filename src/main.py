@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Qguardarr",
     description="qBittorrent per-tracker upload speed limiter",
-    version="0.3.4",
+    version="0.3.5",
     lifespan=lifespan,
 )
 

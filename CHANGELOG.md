@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 
 ## [Unreleased]
 
+## [0.3.5] - 2025-09-04
+### Added
+- feat(config): `global.cache_ttl_seconds` to control TorrentCache cleanup TTL (default 1800s).
+
+### Changed
+- perf(allocation): Only include active torrents; remove cache backfill-by-hashes API calls.
+- perf(allocation): Use configured TTL for cache cleanup to avoid stale entries.
+- chore(qbit): Add DEBUG logs for tracker URL selection and fallbacks.
+
+### Documentation
+- docs(readme): Simplify Docker Quick Start, clarify config essentials, and document cache TTL.
+
+### Tests
+- test: Update active-torrents unit to assert no backfill; add TTL cleanup test.
+
 ## [0.3.4] - 2025-09-04
 ### Changed
 - chore(config): Default `global.rollout_percentage` is now 100 when omitted (previous default was 10). If you don’t specify it in config, Qguardarr manages 100% of eligible torrents.
@@ -115,7 +130,8 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 ### Removed
 - Legacy integration scripts and targets replaced by unified Docker test runner.
 
-[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.5
 [0.3.4]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.4
 [0.3.3]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.3
 [0.3.2]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.2
