@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Qguardarr",
     description="qBittorrent per-tracker upload speed limiter",
-    version="0.3.2",
+    version="0.3.3",
     lifespan=lifespan,
 )
 
@@ -230,7 +230,7 @@ async def health_check() -> Dict[str, Any]:
     health_data = {
         "status": app_state.get("health_status", "unknown"),
         "uptime_seconds": round(uptime, 1),
-        "version": "0.3.2",
+        "version": "0.3.3",
         "last_cycle_time": app_state.get("last_cycle_time"),
         "last_cycle_duration": app_state.get("last_cycle_duration"),
     }
@@ -274,6 +274,15 @@ async def get_tracker_stats() -> Dict[str, Any]:
         raise HTTPException(status_code=503, detail="Service not ready")
 
     return allocation_engine.get_tracker_stats()
+
+
+@app.get("/stats/managed")
+async def get_managed_listing() -> Dict[str, Any]:
+    """List managed torrents grouped by tracker with timestamps."""
+    if not (allocation_engine := app_state.get("allocation_engine")):
+        raise HTTPException(status_code=503, detail="Service not ready")
+
+    return allocation_engine.get_managed_overview()
 
 
 @app.post("/webhook")
@@ -582,7 +591,7 @@ async def root():
     """Root endpoint"""
     return {
         "name": "Qguardarr",
-        "version": "0.3.2",
+        "version": "0.3.3",
         "description": "qBittorrent per-tracker upload speed limiter",
         "status": app_state.get("health_status", "unknown"),
         "endpoints": {

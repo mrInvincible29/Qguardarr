@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 
 ## [Unreleased]
 
+## [0.3.3] - 2025-09-04
+### Added
+- feat(api): `GET /stats/managed` returns managed torrents grouped by tracker with `hash`, `current_limit`, `added_at`, `last_seen`, and `age_seconds`.
+
+### Fixed
+- fix(stats): For unlimited trackers (configured `max_upload_speed <= 0`), report `configured_limit_mbps: null` instead of `-0`.
+
+### Notes
+- Logs now go to the file configured in `logging.file`; Uvicorn writes console output. Use `tail -f logs/qguardarr.log` to watch allocation cycles.
+
 ## [0.3.2] - 2025-09-04
 ### Changed
 - perf(qbit): Eliminate full-list queries. Use `filter=active` + upspeed threshold and backfill only a bounded subset of cached hashes via `GET /torrents/info?hashes=...` (cap 1000). Trackers are fetched only for the filtered subsets.
@@ -93,7 +103,8 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 ### Removed
 - Legacy integration scripts and targets replaced by unified Docker test runner.
 
-[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.3
 [0.3.2]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.2
 [0.3.1]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.1
 [0.3.0]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.0

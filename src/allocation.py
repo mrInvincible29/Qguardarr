@@ -29,6 +29,8 @@ class TorrentCache:
         self.upload_speeds = np.zeros(capacity, dtype=np.float32)
         self.current_limits = np.zeros(capacity, dtype=np.int32)
         self.last_seen = np.zeros(capacity, dtype=np.uint32)
+        # Timestamp when torrent was first added to the managed set
+        self.added_at = np.zeros(capacity, dtype=np.uint32)
         self.needs_update = np.zeros(capacity, dtype=bool)
 
     def add_torrent(
@@ -49,6 +51,7 @@ class TorrentCache:
         self.upload_speeds[index] = upload_speed
         self.current_limits[index] = current_limit
         self.last_seen[index] = int(time.time())
+        self.added_at[index] = int(time.time())
         self.needs_update[index] = False
         self.used_count += 1
         return True
@@ -76,6 +79,7 @@ class TorrentCache:
         self.upload_speeds[index] = 0.0
         self.current_limits[index] = 0
         self.last_seen[index] = 0
+        self.added_at[index] = 0
         self.needs_update[index] = False
         self.used_count -= 1
         return True
@@ -143,6 +147,26 @@ class TorrentCache:
             "capacity": self.capacity,
             "utilization_percent": round(self.used_count / self.capacity * 100, 1),
         }
+
+    def get_managed_listing(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Return managed torrents grouped by tracker with metadata."""
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        now = int(time.time())
+        for torrent_hash, index in self.hash_to_index.items():
+            tracker_id = self.tracker_ids[index]
+            item = {
+                "hash": torrent_hash,
+                "current_limit": int(self.current_limits[index]),
+                "added_at": int(self.added_at[index]) or None,
+                "last_seen": int(self.last_seen[index]) or None,
+                "age_seconds": (
+                    (now - int(self.added_at[index]))
+                    if int(self.added_at[index])
+                    else None
+                ),
+            }
+            grouped.setdefault(tracker_id or "unknown", []).append(item)
+        return grouped
 
 
 class ActivityScorer:
@@ -980,6 +1004,18 @@ class AllocationEngine:
 
         return stats
 
+    def get_managed_overview(self) -> Dict[str, Any]:
+        """Return grouped listing and counts for managed torrents."""
+        listing = self.cache.get_managed_listing()
+        counts_by_tracker = {k: len(v) for k, v in listing.items()}
+        total = sum(counts_by_tracker.values())
+        return {
+            "generated_at": int(time.time()),
+            "total": total,
+            "counts_by_tracker": counts_by_tracker,
+            "trackers": listing,
+        }
+
     async def preview_next_cycle(self) -> Dict[str, Any]:
         """Compute a preview of the next allocation cycle without applying changes."""
         # Collect torrents similarly to run_allocation_cycle but do not mutate state
@@ -1376,11 +1412,12 @@ class AllocationEngine:
 
         # Get configured limits
         for tracker_config in self.tracker_matcher.get_all_tracker_configs():
+            # Treat <=0 (unlimited) as None to avoid -0.0 display
+            cfg_bps = tracker_config.max_upload_speed
+            cfg_mbps = None if cfg_bps <= 0 else round(cfg_bps / (1024 * 1024), 2)
             tracker_stats[tracker_config.id] = {
                 "name": tracker_config.name,
-                "configured_limit_mbps": round(
-                    tracker_config.max_upload_speed / (1024 * 1024), 2
-                ),
+                "configured_limit_mbps": cfg_mbps,
                 "priority": tracker_config.priority,
                 "active_torrents": 0,
                 "current_usage_mbps": 0.0,
