@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Qguardarr",
     description="qBittorrent per-tracker upload speed limiter",
-    version="0.3.1",
+    version="0.3.2",
     lifespan=lifespan,
 )
 
@@ -102,6 +102,7 @@ async def startup_event():
     # Start background tasks
     asyncio.create_task(allocation_cycle_task())
     asyncio.create_task(app_state["webhook_handler"].start_event_processor())
+    asyncio.create_task(config_watcher_task())
 
     logging.info("Qguardarr started successfully")
 
@@ -145,6 +146,81 @@ async def allocation_cycle_task():
         await asyncio.sleep(config.global_settings.update_interval)
 
 
+async def _apply_new_config(new_config) -> None:
+    """Apply a freshly loaded configuration to running components."""
+    # Update tracker matcher
+    if matcher := app_state.get("tracker_matcher"):
+        try:
+            matcher.update_tracker_configs(new_config.trackers)
+        except Exception as e:
+            logging.warning(f"Failed updating tracker matcher: {e}")
+
+    # Update allocation engine config and rollout/dry-run knobs
+    if engine := app_state.get("allocation_engine"):
+        try:
+            engine.config = new_config
+            engine.update_rollout_percentage(
+                new_config.global_settings.rollout_percentage
+            )
+            engine.dry_run = bool(getattr(new_config.global_settings, "dry_run", False))
+            if engine.dry_run:
+                from src.dry_run_store import DryRunStore
+
+                engine.dry_run_store = DryRunStore(
+                    new_config.global_settings.dry_run_store_path
+                )
+            else:
+                engine.dry_run_store = None
+        except Exception as e:
+            logging.warning(f"Failed updating allocation engine: {e}")
+
+    # Update webhook handler/cross-seed settings
+    if wh := app_state.get("webhook_handler"):
+        try:
+            wh.config = new_config
+            if wh.cross_seed_forwarder:
+                wh.cross_seed_forwarder.config = new_config
+        except Exception as e:
+            logging.warning(f"Failed updating webhook handler: {e}")
+
+
+async def config_watcher_task(poll_interval: float = 2.0):
+    """Poll the config file and hot-reload on change (mtime-based)."""
+    loader = app_state.get("config_loader")
+    if not loader:
+        return
+    path = loader.config_path
+    last_mtime = None
+    try:
+        if path.exists():
+            last_mtime = path.stat().st_mtime
+    except Exception:
+        last_mtime = None
+
+    logging.info(f"Config watcher started for {path}")
+    while True:
+        try:
+            await asyncio.sleep(poll_interval)
+            if not path.exists():
+                continue
+            mtime = path.stat().st_mtime
+            if last_mtime is None:
+                last_mtime = mtime
+                continue
+            if mtime != last_mtime:
+                logging.info("Config file change detected; reloading")
+                last_mtime = mtime
+                try:
+                    new_cfg = loader.reload_config()
+                    app_state["config"] = new_cfg
+                    await _apply_new_config(new_cfg)
+                    logging.info("Config hot-reload applied")
+                except Exception as e:
+                    logging.error(f"Config reload failed: {e}")
+        except Exception as e:
+            logging.warning(f"Config watcher error: {e}")
+
+
 @app.get("/health")
 async def health_check() -> Dict[str, Any]:
     """Health check endpoint"""
@@ -154,7 +230,7 @@ async def health_check() -> Dict[str, Any]:
     health_data = {
         "status": app_state.get("health_status", "unknown"),
         "uptime_seconds": round(uptime, 1),
-        "version": "0.3.1",
+        "version": "0.3.2",
         "last_cycle_time": app_state.get("last_cycle_time"),
         "last_cycle_duration": app_state.get("last_cycle_duration"),
     }
@@ -479,12 +555,34 @@ async def get_config():
     return config_dict
 
 
+@app.post("/config/reload")
+async def reload_config():
+    """Reload configuration from disk and apply to running components"""
+    config_loader = app_state.get("config_loader")
+    if not config_loader:
+        raise HTTPException(status_code=503, detail="Config loader not ready")
+
+    try:
+        new_config = config_loader.reload_config()
+        app_state["config"] = new_config
+        await _apply_new_config(new_config)
+
+        return {
+            "status": "reloaded",
+            "rollout_percentage": new_config.global_settings.rollout_percentage,
+            "strategy": new_config.global_settings.allocation_strategy,
+        }
+    except Exception as e:
+        logging.error(f"Config reload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
         "name": "Qguardarr",
-        "version": "0.3.1",
+        "version": "0.3.2",
         "description": "qBittorrent per-tracker upload speed limiter",
         "status": app_state.get("health_status", "unknown"),
         "endpoints": {
@@ -493,6 +591,7 @@ async def root():
             "stats_trackers": "/stats/trackers",
             "webhook": "/webhook",
             "config": "/config",
+            "config_reload": "/config/reload",
             "preview_next_cycle": "/preview/next-cycle",
             "smoothing_reset": "/smoothing/reset",
         },

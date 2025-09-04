@@ -360,20 +360,17 @@ class AllocationEngine:
             )
             self.stats["api_calls_last_cycle"] += 1
 
-            # Also include recently active torrents from cache
+            # Also include recently active torrents from cache (bounded subset)
             cached_hashes = set(self.cache.hash_to_index.keys())
             if cached_hashes:
-                all_torrents = await self.qbit_client.get_torrents(filter_active=False)
-                self.stats["api_calls_last_cycle"] += 1
-
-                # Add cached torrents that might not be actively uploading now
                 active_hashes = {t.hash for t in torrents}
-                for torrent in all_torrents:
-                    if (
-                        torrent.hash in cached_hashes
-                        and torrent.hash not in active_hashes
-                    ):
-                        torrents.append(torrent)
+                missing = [h for h in cached_hashes if h not in active_hashes]
+                if missing:
+                    MAX_BACKFILL = min(len(missing), 1000)
+                    subset = missing[:MAX_BACKFILL]
+                    backfill = await self.qbit_client.get_torrents_by_hashes(subset)
+                    self.stats["api_calls_last_cycle"] += 1
+                    torrents.extend(backfill)
 
             return torrents
 

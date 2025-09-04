@@ -188,16 +188,18 @@ wait_for_services() {
             fi
         fi
         
-        # In quick mode, only wait for qBittorrent
-        if $QUICK_MODE && [ "$qbit_status" = "healthy" ]; then
-            log SUCCESS "Services ready (quick mode)"
-            return 0
-        fi
-        
-        # In full mode, wait for both services
-        if [ "$qbit_status" = "healthy" ] && [ "$qguardarr_healthy" = true ]; then
-            log SUCCESS "All services are healthy"
-            return 0
+        # In quick mode, still require both services so Qguardarr tests can run
+        if $QUICK_MODE; then
+            if [ "$qbit_status" = "healthy" ] && [ "$qguardarr_healthy" = true ]; then
+                log SUCCESS "Services ready (quick mode)"
+                return 0
+            fi
+        else
+            # In full mode, wait for both services
+            if [ "$qbit_status" = "healthy" ] && [ "$qguardarr_healthy" = true ]; then
+                log SUCCESS "All services are healthy"
+                return 0
+            fi
         fi
         
         echo -n "."
@@ -250,6 +252,13 @@ run_tests() {
 
     timeout "$TEST_TIMEOUT" python -m pytest "${pytest_args[@]}"
     local test_exit_code=$?
+
+    # Run hot-reload test explicitly (ensure it runs in quick mode regardless of markers)
+    if $QUICK_MODE; then
+        log INFO "Running config hot-reload test..."
+        # Run without coverage to avoid fail-under trips on single-test run
+        python -m pytest tests/integration/test_config_hot_reload.py -x --tb=short -o addopts="" || test_exit_code=$?
+    fi
 
     if [ $test_exit_code -eq 0 ]; then
         log SUCCESS "All tests passed!"

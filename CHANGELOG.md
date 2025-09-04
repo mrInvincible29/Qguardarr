@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 
 ## [Unreleased]
 
+## [0.3.2] - 2025-09-04
+### Changed
+- perf(qbit): Eliminate full-list queries. Use `filter=active` + upspeed threshold and backfill only a bounded subset of cached hashes via `GET /torrents/info?hashes=...` (cap 1000). Trackers are fetched only for the filtered subsets.
+- chore(tests): Update unit tests to validate backfill-by-hashes behavior.
+- chore(runner): Quick Docker test runner now waits for Qguardarr and executes the config hot-reload test in quick mode.
+
+### Added
+- feat(config): Automatic config hot-reload via background watcher (mtime-based). Manual `POST /config/reload` endpoint for ops.
+- test(integration): Hot-reload integration test that edits host `config/qguardarr.yaml` and asserts rollout change.
+
+### Security
+- No changes since 0.3.1; single-password auth and log redaction remain enforced.
+
+
 ## [0.3.1] - 2025-09-03
 ### Changed
 - perf(qbit): Query torrents with `filter=active` (instead of `uploading`) and only fetch trackers for torrents with `upspeed >= active_torrent_threshold_kb*1024`. This significantly reduces qBittorrent API calls on large libraries.
@@ -79,7 +93,8 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 ### Removed
 - Legacy integration scripts and targets replaced by unified Docker test runner.
 
-[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.2
 [0.3.1]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.1
 [0.3.0]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.0
 [0.2.0]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.2.0

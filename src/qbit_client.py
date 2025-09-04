@@ -253,6 +253,30 @@ class QBittorrentClient:
 
         return torrents
 
+    async def get_torrents_by_hashes(self, hashes: List[str]) -> List[TorrentInfo]:
+        """Get torrent info for a specific set of hashes only.
+
+        Uses the qBittorrent `hashes` parameter (pipe-separated) to avoid
+        fetching the entire torrent list when only a subset is needed.
+        """
+        if not hashes:
+            return []
+
+        # qBittorrent expects pipe-separated hashes
+        hashes_param = "|".join(hashes)
+        response = await self._make_request(
+            "GET", "/api/v2/torrents/info", params={"hashes": hashes_param}
+        )
+        torrents_data = response.json()
+
+        torrents: List[TorrentInfo] = []
+        for torrent_data in torrents_data:
+            tracker_info = await self._get_torrent_tracker(torrent_data["hash"])
+            torrent_data["tracker"] = tracker_info
+            torrents.append(TorrentInfo(**torrent_data))
+
+        return torrents
+
     async def _get_torrent_tracker(self, torrent_hash: str) -> str:
         """Get primary tracker for torrent"""
         try:

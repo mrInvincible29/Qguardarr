@@ -135,8 +135,9 @@ async def test_get_active_torrents_cache_merge():
     # Preload cache with h2
     engine.cache.add_torrent("h2", "default", 0.0, 0)
 
-    # Active returns empty; all returns h2
-    qbit.get_torrents.side_effect = [[], [make_torrent("h2")]]
+    # Active returns empty; backfill by hashes returns h2
+    qbit.get_torrents.side_effect = [[]]
+    qbit.get_torrents_by_hashes = AsyncMock(return_value=[make_torrent("h2")])
     out = await engine._get_active_torrents()
     assert any(t.hash == "h2" for t in out)
 
