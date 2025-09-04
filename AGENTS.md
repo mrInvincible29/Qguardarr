@@ -90,3 +90,4 @@ Use the GitHub CLI (`gh`) to update release notes after a tag/release exists.
   - Include a “Full Changelog” link: `https://github.com/<org>/<repo>/compare/vX.Y.Z-1...vX.Y.Z`
   - Add assets later: `gh release upload v0.3.5 dist/*`
   - In CI, set `GH_TOKEN`/`GITHUB_TOKEN` for non-interactive `gh` usage.
+  - Cleanup: remove the temporary notes file after updating the release, e.g. `rm -f RELEASE_NOTES_0_3_5.md` (or your versioned notes filename).
