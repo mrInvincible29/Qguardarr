@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Qguardarr",
     description="qBittorrent per-tracker upload speed limiter",
-    version="0.3.3",
+    version="0.3.4",
     lifespan=lifespan,
 )
 
@@ -230,7 +230,7 @@ async def health_check() -> Dict[str, Any]:
     health_data = {
         "status": app_state.get("health_status", "unknown"),
         "uptime_seconds": round(uptime, 1),
-        "version": "0.3.3",
+        "version": "0.3.4",
         "last_cycle_time": app_state.get("last_cycle_time"),
         "last_cycle_duration": app_state.get("last_cycle_duration"),
     }
@@ -283,6 +283,23 @@ async def get_managed_listing() -> Dict[str, Any]:
         raise HTTPException(status_code=503, detail="Service not ready")
 
     return allocation_engine.get_managed_overview()
+
+
+@app.get("/match/test")
+async def match_test(url: str, detailed: bool = False) -> Dict[str, Any]:
+    """Test a tracker URL against configured patterns.
+
+    Query params:
+    - url: full tracker URL to test
+    - detailed: when true, include per-pattern match info
+    """
+    matcher = app_state.get("tracker_matcher")
+    if not matcher:
+        raise HTTPException(status_code=503, detail="Service not ready")
+    try:
+        return matcher.test_pattern_match(url, detailed=detailed)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/webhook")
@@ -591,7 +608,7 @@ async def root():
     """Root endpoint"""
     return {
         "name": "Qguardarr",
-        "version": "0.3.3",
+        "version": "0.3.4",
         "description": "qBittorrent per-tracker upload speed limiter",
         "status": app_state.get("health_status", "unknown"),
         "endpoints": {

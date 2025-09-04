@@ -245,6 +245,23 @@ class TestTrackerMatcher:
         matcher.update_tracker_configs([configs[1], configs[0], configs[2]])
         assert matcher.match_tracker(url) == "specific"
 
+    def test_normalize_pattern_dot_wrapping(self):
+        # User provided pattern with single dots at ends
+        cfgs = [
+            TrackerConfig(
+                id="x",
+                name="X",
+                pattern=".example\\.com.",
+                max_upload_speed=1000,
+                priority=1,
+            ),
+            TrackerConfig(
+                id="default", name="d", pattern=".*", max_upload_speed=-1, priority=1
+            ),
+        ]
+        m = TrackerMatcher(cfgs)
+        assert m.match_tracker("http://sub.example.com/announce") == "x"
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

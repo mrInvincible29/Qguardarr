@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 
 ## [Unreleased]
 
+## [0.3.4] - 2025-09-04
+### Changed
+- chore(config): Default `global.rollout_percentage` is now 100 when omitted (previous default was 10). If you don’t specify it in config, Qguardarr manages 100% of eligible torrents.
+- chore(matching): Normalize shorthand tracker patterns like `.example\\.com.` into `.*example\\.com.*` unless anchored with `^`/`$`, making config patterns more forgiving.
+
+### Added
+- feat(logging): DEBUG logs now include the selected tracker URL per torrent and the matched tracker with current upload speed (e.g., `up=2.95 MiB/s`).
+- feat(api): `/match/test?url=...&detailed=true` endpoint to test a tracker URL against configured patterns.
+
+### Tests
+- test: Add unit tests for pattern normalization and the new match-test endpoint.
+
 ## [0.3.3] - 2025-09-04
 ### Added
 - feat(api): `GET /stats/managed` returns managed torrents grouped by tracker with `hash`, `current_limit`, `added_at`, `last_seen`, and `age_seconds`.
@@ -103,7 +115,8 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 ### Removed
 - Legacy integration scripts and targets replaced by unified Docker test runner.
 
-[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.4
 [0.3.3]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.3
 [0.3.2]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.2
 [0.3.1]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.1

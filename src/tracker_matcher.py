@@ -31,14 +31,45 @@ class TrackerMatcher:
 
         for config in self.tracker_configs:
             try:
-                self.patterns[config.id] = re.compile(config.pattern, re.IGNORECASE)
+                pattern_text = self._normalize_pattern(config.pattern)
+                self.patterns[config.id] = re.compile(pattern_text, re.IGNORECASE)
                 logging.debug(
-                    f"Compiled pattern for tracker {config.id}: {config.pattern}"
+                    f"Compiled pattern for tracker {config.id}: {pattern_text}"
                 )
             except re.error as e:
                 logging.error(f"Invalid regex pattern for tracker {config.id}: {e}")
 
         logging.info(f"Compiled {len(self.patterns)} tracker patterns")
+
+    def _normalize_pattern(self, pattern: str) -> str:
+        """Make simple domain patterns more forgiving.
+
+        - If pattern is anchored (^ or $), leave as-is.
+        - If pattern lacks leading wildcard, add ".*" (also convert single leading '.' to '.*').
+        - If pattern lacks trailing wildcard, add ".*" (also convert single trailing '.' to '.*').
+        This helps users who write patterns like ".example\\.com." instead of ".*example\\.com.*".
+        """
+        s = pattern.strip()
+        if not s:
+            return s
+        # Respect explicit anchors
+        if s.startswith("^") or s.endswith("$"):
+            return s
+        # Normalize leading
+        if s.startswith(".*"):
+            pass
+        elif s.startswith("."):
+            s = ".*" + s[1:]
+        else:
+            s = ".*" + s
+        # Normalize trailing
+        if s.endswith(".*"):
+            pass
+        elif s.endswith("."):
+            s = s[:-1] + ".*"
+        else:
+            s = s + ".*"
+        return s
 
     def _get_cache_key(self, tracker_url: str) -> str:
         """Generate cache key for tracker URL"""

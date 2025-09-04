@@ -51,7 +51,7 @@ class GlobalSettings(BaseModel):
     )
     max_api_calls_per_cycle: int = Field(default=500, ge=100)
     differential_threshold: float = Field(default=0.2, ge=0.05, le=1.0)
-    rollout_percentage: int = Field(default=10, ge=1, le=100)
+    rollout_percentage: int = Field(default=100, ge=1, le=100)
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8089, ge=1024, le=65535)
     # Phase 2 controls

@@ -430,6 +430,28 @@ class AllocationEngine:
             # Match tracker
             tracker_id = self.tracker_matcher.match_tracker(torrent.tracker)
 
+            # Log with upload speed for easier troubleshooting
+            def _fmt_speed(bps: int) -> str:
+                try:
+                    v = int(bps)
+                except Exception:
+                    return "unknown"
+                if v <= 0:
+                    return "0 B/s"
+                if v < 1024:
+                    return f"{v} B/s"
+                if v < 1024 * 1024:
+                    return f"{v / 1024:.1f} KiB/s"
+                return f"{v / 1048576:.2f} MiB/s"
+
+            logging.debug(
+                "Matched tracker for %s: %s (url=%s, up=%s)",
+                torrent.hash[:8],
+                tracker_id,
+                torrent.tracker,
+                _fmt_speed(getattr(torrent, "upspeed", 0)),
+            )
+
             # Get current limit from qBittorrent (or dry-run store) if not in cache
             current_limit = self.cache.get_current_limit(torrent.hash)
             if current_limit is None:
