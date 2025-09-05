@@ -94,8 +94,13 @@ def app_with_rollback(tmp_path):
     main.app_state["rollback_manager"] = rb
     main.app_state["qbit_client"] = qbit
 
-    # Initialize rollback DB
-    asyncio.get_event_loop().run_until_complete(rb.initialize())
+    # Initialize rollback DB robustly across event-loop policies
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(rb.initialize())
 
     return client, rb, qbit
 

@@ -230,7 +230,7 @@ async def health_check() -> Dict[str, Any]:
     health_data = {
         "status": app_state.get("health_status", "unknown"),
         "uptime_seconds": round(uptime, 1),
-        "version": "0.3.6",
+        "version": "0.3.7",
         "last_cycle_time": app_state.get("last_cycle_time"),
         "last_cycle_duration": app_state.get("last_cycle_duration"),
     }
@@ -608,7 +608,7 @@ async def root():
     """Root endpoint"""
     return {
         "name": "Qguardarr",
-        "version": "0.3.6",
+        "version": "0.3.7",
         "description": "qBittorrent per-tracker upload speed limiter",
         "status": app_state.get("health_status", "unknown"),
         "endpoints": {

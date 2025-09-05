@@ -9,7 +9,7 @@ global:
   differential_threshold: 0.1  # More sensitive for testing
   
   # Start with small rollout for safety
-  rollout_percentage: 100  # Full rollout for testing
+  rollout_percentage: 42
   
   # Server settings
   host: "0.0.0.0"

@@ -4,8 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-@pytest.mark.asyncio
-async def test_stats_managed_endpoint(monkeypatch):
+def test_stats_managed_endpoint(monkeypatch):
     import src.main as main
     from src.allocation import AllocationEngine
     from src.config import (

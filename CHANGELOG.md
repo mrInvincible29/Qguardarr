@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 
 ## [Unreleased]
 
+## [0.3.7] - 2025-09-05
+### Tests
+- fix(tests): stabilize CI by fixing event-loop usage in `tests/unit/test_rollback_apply.py` and avoiding mixing `@pytest.mark.asyncio` with `TestClient` in `tests/unit/test_managed_endpoint.py`.
+  These are test-only changes; no runtime behavior change.
+
 ## [0.3.6] - 2025-09-05
 ### Added
 - feat(config): `global.auto_unlimit_on_inactive` (default false). When enabled, Qguardarr sets per-torrent upload limits to unlimited (-1) as soon as a torrent is not active in the current cycle.
@@ -140,7 +145,8 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 ### Removed
 - Legacy integration scripts and targets replaced by unified Docker test runner.
 
-[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.6...HEAD
+[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.7...HEAD
+[0.3.7]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.7
 [0.3.6]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.6
 [0.3.5]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.5
 [0.3.4]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.4
