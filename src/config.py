@@ -89,6 +89,14 @@ class GlobalSettings(BaseModel):
         default="./data/dry_run_limits.json",
         description="Path to JSON file storing simulated per-torrent limits in dry-run",
     )
+    # Auto unlimit behavior
+    auto_unlimit_on_inactive: bool = Field(
+        default=False,
+        description=(
+            "When enabled, set per-torrent upload limit to unlimited (-1) when the "
+            "torrent is no longer active in the current cycle."
+        ),
+    )
 
     @field_validator("allocation_strategy")
     @classmethod

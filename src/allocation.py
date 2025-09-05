@@ -347,6 +347,13 @@ class AllocationEngine:
             changes_applied = await self._apply_differential_updates(new_limits)
             self.stats["limits_applied"] += changes_applied
 
+            # Step 5.5: Optionally auto-unlimit torrents that are currently inactive
+            if getattr(self.config.global_settings, "auto_unlimit_on_inactive", False):
+                active_hashes: Set[str] = {t.hash for t in active_torrents}
+                extra = await self._auto_unlimit_unmanaged(active_hashes)
+                if extra:
+                    self.stats["limits_applied"] += extra
+
             # Step 6: Cleanup old cache entries
             ttl = int(getattr(self.config.global_settings, "cache_ttl_seconds", 1800))
             cleaned = self.cache.cleanup_old_torrents(max_age_seconds=ttl)
@@ -760,6 +767,70 @@ class AllocationEngine:
         """Handle torrent deletion event"""
         self.cache.remove_torrent(torrent_hash)
         self.pending_checks.discard(torrent_hash)
+
+    async def _auto_unlimit_unmanaged(self, active_hashes: Set[str]) -> int:
+        """Set -1 (unlimited) for torrents present in cache but not currently active.
+
+        Returns number of torrents updated.
+        """
+        try:
+            # Determine unmanaged torrents based on current cache entries
+            cached_hashes = set(self.cache.hash_to_index.keys())
+            # Consider only torrents that are no longer active this cycle
+            unmanaged = cached_hashes - set(active_hashes)
+            if not unmanaged:
+                return 0
+
+            updates: Dict[str, int] = {}
+            for h in unmanaged:
+                current = self.cache.get_current_limit(h)
+                # Only update if currently capped (>0); skip if already unlimited or unknown
+                if current is not None and current > 0:
+                    updates[h] = -1
+
+            if not updates:
+                return 0
+
+            logging.debug(
+                "Auto-unlimit: %d unmanaged torrents will be set to unlimited",
+                len(updates),
+            )
+
+            # Dry-run path: persist to dry-run store and update cache only
+            if self.dry_run:
+                if self.dry_run_store:
+                    self.dry_run_store.set_many(updates)
+                for h in updates.keys():
+                    idx = self.cache.hash_to_index.get(h)
+                    if idx is not None:
+                        self.cache.current_limits[idx] = -1
+                return len(updates)
+
+            # Real path: record rollback and apply via qBittorrent
+            rollback_entries = []
+            for h, new_limit in updates.items():
+                current_limit = self.cache.get_current_limit(h) or -1
+                tracker_id = self.cache.get_tracker_id(h) or "unknown"
+                rollback_entries.append(
+                    (h, current_limit, new_limit, tracker_id, "auto_unlimit_inactive")
+                )
+            await self.rollback_manager.record_batch_changes(rollback_entries)
+
+            await self.qbit_client.set_torrents_upload_limits_batch(updates)
+            # Roughly estimate API calls used
+            self.stats["api_calls_last_cycle"] += len(updates) // 50 + 1
+
+            # Update cache
+            for h in updates.keys():
+                idx = self.cache.hash_to_index.get(h)
+                if idx is not None:
+                    self.cache.current_limits[idx] = -1
+
+            return len(updates)
+
+        except Exception as e:
+            logging.error(f"Auto-unlimit unmanaged failed: {e}")
+            return 0
 
     def update_rollout_percentage(self, percentage: int):
         """Update gradual rollout percentage"""

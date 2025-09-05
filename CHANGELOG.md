@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 
 ## [Unreleased]
 
+## [0.3.6] - 2025-09-05
+### Added
+- feat(config): `global.auto_unlimit_on_inactive` (default false). When enabled, Qguardarr sets per-torrent upload limits to unlimited (-1) as soon as a torrent is not active in the current cycle.
+
+### Changed
+- feat(allocation): Apply auto-unlimit for inactive torrents after differential updates; records rollback entries with reason `auto_unlimit_inactive`. Dry-run persists -1 in the dry-run store without calling qBittorrent.
+
+### Tests
+- test: Add unit tests for auto-unlimit behavior in real and dry-run modes.
+
 ## [0.3.5] - 2025-09-04
 ### Added
 - feat(config): `global.cache_ttl_seconds` to control TorrentCache cleanup TTL (default 1800s).
@@ -130,7 +140,8 @@ The format is based on Keep a Changelog and this project aims to follow Semantic
 ### Removed
 - Legacy integration scripts and targets replaced by unified Docker test runner.
 
-[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.5...HEAD
+[Unreleased]: https://github.com/mrInvincible29/Qguardarr/compare/v0.3.6...HEAD
+[0.3.6]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.6
 [0.3.5]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.5
 [0.3.4]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.4
 [0.3.3]: https://github.com/mrInvincible29/Qguardarr/releases/tag/v0.3.3
